@@ -1,0 +1,44 @@
+{
+  "name": "amazon-q-cli-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server wrapper for Amazon Q CLI",
+  "type": "module",
+  "main": "dist/server.js",
+  "bin": {
+    "amazon-q-mcp-server": "dist/server.js"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "tsc --watch",
+    "test": "vitest --exclude '**/integration.test.ts'",
+    "test:all": "vitest",
+    "test:integration": "vitest integration.test.ts"
+  },
+  "keywords": [
+    "mcp",
+    "amazon-q",
+    "cli",
+    "ai",
+    "assistant"
+  ],
+  "author": "Amazon Web Services",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
