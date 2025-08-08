@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "amazon-q-cli": {
+      "command": "node",
+      "args": ["/home/yanggf/a/qcli/dist/server.js"],
+      "env": {}
+    }
+  }
+}
