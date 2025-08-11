@@ -6,11 +6,9 @@ This is a Model Context Protocol (MCP) server that wraps the Amazon Q CLI, allow
 
 The MCP server provides the following tools:
 
-- **q_chat**: Start an interactive chat session with Amazon Q CLI
-- **q_execute_command**: Execute any Amazon Q CLI command with specific parameters
-- **q_get_help**: Get help information for Amazon Q CLI commands
-- **q_list_profiles**: List available AWS profiles
-- **q_check_status**: Check Amazon Q CLI installation and configuration status
+- **ask_q**: Execute Amazon Q CLI with a prompt to get AI assistance
+- **q_translate**: Convert natural language to shell commands using Amazon Q
+- **q_status**: Check Amazon Q CLI installation and configuration status
 
 ## Prerequisites
 
@@ -74,76 +72,57 @@ The server uses stdio transport, so it can be used with any MCP host that suppor
 
 ## Available Tools
 
-### q_chat
+### ask_q
 
-Start a chat session with Amazon Q CLI.
+Chat with Amazon Q CLI to get AI assistance.
 
 **Parameters:**
-- `message` (required): The message to send to Amazon Q
-- `profile` (optional): AWS profile to use
-- `region` (optional): AWS region to use
+- `prompt` (required): The message to send to Amazon Q
+- `model` (optional): Model to use
+- `agent` (optional): Agent/context profile to use
 
 **Example:**
 ```json
 {
-  "name": "q_chat",
+  "name": "ask_q",
   "arguments": {
-    "message": "How do I create an S3 bucket using AWS CLI?",
-    "profile": "my-profile",
-    "region": "us-west-2"
+    "prompt": "How do I create an S3 bucket using AWS CLI?",
+    "model": "claude-4-sonnet",
+    "agent": "my-agent"
   }
 }
 ```
 
-### q_execute_command
+### q_translate
 
-Execute a specific Amazon Q CLI command.
+Convert natural language to shell commands using Amazon Q.
 
 **Parameters:**
-- `command` (required): The Q CLI command to execute
-- `args` (optional): Additional arguments for the command
-- `profile` (optional): AWS profile to use
-- `region` (optional): AWS region to use
+- `task` (required): Natural language description of the task
 
 **Example:**
 ```json
 {
-  "name": "q_execute_command",
+  "name": "q_translate",
   "arguments": {
-    "command": "help",
-    "args": ["chat"]
+    "task": "find all Python files in the current directory"
   }
 }
 ```
 
-### q_get_help
-
-Get help information for Amazon Q CLI commands.
-
-**Parameters:**
-- `command` (optional): Specific command to get help for
-
-**Example:**
-```json
-{
-  "name": "q_get_help",
-  "arguments": {
-    "command": "chat"
-  }
-}
-```
-
-### q_list_profiles
-
-List available AWS profiles.
-
-**Parameters:** None
-
-### q_check_status
+### q_status
 
 Check Amazon Q CLI installation and configuration status.
 
 **Parameters:** None
+
+**Example:**
+```json
+{
+  "name": "q_status",
+  "arguments": {}
+}
+```
 
 ## Configuration
 
@@ -174,6 +153,10 @@ npm test
 ```
 
 ## Troubleshooting
+
+### "Q CLI exited with code 2" error
+
+If you encounter this error with the `ask_q` tool, it's likely due to how the prompt is being passed to the Q CLI. The server has been updated to use stdin for passing prompts instead of command line arguments, which resolves this issue.
 
 ### "Q CLI not found" error
 

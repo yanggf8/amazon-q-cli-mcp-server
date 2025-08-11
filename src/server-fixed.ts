@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Amazon Q CLI MCP Server
+ * Amazon Q CLI MCP Server - Fixed Version
  * 
  * Simple, focused tools that directly leverage Amazon Q CLI capabilities
  */
