@@ -9,6 +9,7 @@ The MCP server provides the following tools:
 - **ask_q**: Execute Amazon Q CLI with a prompt to get AI assistance
 - **q_translate**: Convert natural language to shell commands using Amazon Q
 - **q_status**: Check Amazon Q CLI installation and configuration status
+- **fetch_chunk**: Fetch a byte range from a URL (chunked HTTP fetch)
 
 ## Prerequisites
 
@@ -121,6 +122,44 @@ Check Amazon Q CLI installation and configuration status.
 {
   "name": "q_status",
   "arguments": {}
+}
+```
+
+### fetch_chunk
+
+Fetch a byte range from an HTTP(S) URL. Useful for incremental download or previewing large files. Returns base64-encoded data and metadata.
+
+**Parameters:**
+- `url` (required): Target HTTP/HTTPS URL
+- `start` (optional): Start byte offset (default 0)
+- `length` (optional): Number of bytes to fetch (default 65536, max 10MB)
+- `headers` (optional): Extra request headers as key-value map
+
+**Example:**
+```json
+{
+  "name": "fetch_chunk",
+  "arguments": {
+    "url": "https://example.com/bigfile.bin",
+    "start": 0,
+    "length": 65536
+  }
+}
+```
+
+**Response shape (example):**
+```json
+{
+  "url": "https://example.com/bigfile.bin",
+  "ok": true,
+  "status": 206,
+  "contentType": "application/octet-stream",
+  "requested": { "start": 0, "end": 65535 },
+  "receivedBytes": 65536,
+  "contentRange": "bytes 0-65535/1234567",
+  "totalBytes": 1234567,
+  "encoding": "base64",
+  "dataBase64": "..."
 }
 ```
 

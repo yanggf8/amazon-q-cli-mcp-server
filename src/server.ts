@@ -91,6 +91,32 @@ class AmazonQMCPServer {
               required: ['task'],
             },
           },
+            {
+              name: 'fetch_chunk',
+              description: 'Fetch a byte range from a URL (chunked HTTP fetch)',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  url: {
+                    type: 'string',
+                    description: 'HTTP/HTTPS URL to fetch',
+                  },
+                  start: {
+                    type: 'number',
+                    description: 'Start byte offset (default 0)',
+                  },
+                  length: {
+                    type: 'number',
+                    description: 'Number of bytes to fetch (default 65536)',
+                  },
+                  headers: {
+                    type: 'object',
+                    description: 'Optional request headers',
+                  },
+                },
+                required: ['url'],
+              },
+            },
           {
             name: 'q_status',
             description: 'Check Amazon Q CLI status and configuration',
@@ -112,6 +138,8 @@ class AmazonQMCPServer {
             return await this.handleAskQ(args);
           case 'q_translate':
             return await this.handleQTranslate(args);
+          case 'fetch_chunk':
+            return await this.handleFetchChunk(args);
           case 'q_status':
             return await this.handleQStatus(args);
           default:
@@ -202,6 +230,72 @@ class AmazonQMCPServer {
     } catch (error) {
       throw new Error(`Status check failed: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  private async handleFetchChunk(args: any) {
+    const schema = z.object({
+      url: z.string().url(),
+      start: z.number().int().min(0).optional().default(0),
+      length: z.number().int().min(1).max(10 * 1024 * 1024).optional().default(65536), // cap at 10MB
+      headers: z.record(z.string()).optional().default({}),
+    });
+
+    const { url, start, length, headers } = schema.parse(args);
+
+    const endInclusive = start + length - 1;
+
+    const requestHeaders: Record<string, string> = {
+      ...headers,
+      Range: `bytes=${start}-${endInclusive}`,
+    };
+
+    const response = await fetch(url, { headers: requestHeaders, method: 'GET' });
+
+    const status = response.status;
+    const contentType = response.headers.get('content-type') || '';
+    const contentRange = response.headers.get('content-range');
+    const arrayBuffer = await response.arrayBuffer();
+    let buffer = Buffer.from(arrayBuffer);
+
+    // If server ignored Range (status 200 without Content-Range), slice client-side
+    if (status === 200 && !contentRange) {
+      const sliceStart = Math.min(start, buffer.length);
+      const sliceEnd = Math.min(buffer.length, endInclusive + 1);
+      buffer = buffer.subarray(sliceStart, sliceEnd);
+    }
+    const dataBase64 = buffer.toString('base64');
+
+    // Try to parse total size from Content-Range: bytes start-end/total
+    let totalBytes: number | null = null;
+    if (contentRange) {
+      const match = contentRange.match(/bytes\s+(\d+)-(\d+)\/(\d+|\*)/i);
+      if (match) {
+        const totalPart = match[3];
+        totalBytes = totalPart === '*' ? null : Number(totalPart);
+      }
+    }
+
+    const resultPayload = {
+      url,
+      ok: response.ok,
+      status,
+      contentType,
+      requested: { start, end: endInclusive },
+      receivedBytes: buffer.byteLength,
+      contentRange: contentRange || null,
+      totalBytes,
+      encoding: 'base64',
+      dataBase64,
+    };
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(resultPayload, null, 2),
+        },
+      ],
+    };
   }
 
   private async executeQCommand(args: string[]): Promise<{ stdout: string; stderr: string }> {
