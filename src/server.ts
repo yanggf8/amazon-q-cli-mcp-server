@@ -394,7 +394,7 @@ class AmazonQMCPServer {
   async run(): Promise<void> {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
-    console.error('Amazon Q CLI MCP Server running on stdio');
+    console.error('[INFO] Amazon Q CLI MCP Server running on stdio (this STDERR message is by design)');
   }
 }
 

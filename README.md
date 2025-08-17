@@ -215,6 +215,15 @@ npm test
 
 ## Troubleshooting
 
+### Normal STDERR Message
+
+When the MCP server starts, you'll see this message in STDERR:
+```
+[INFO] Amazon Q CLI MCP Server running on stdio (this STDERR message is by design)
+```
+
+**This is completely normal and expected.** The message is intentionally sent to STDERR to indicate the server has started successfully without interfering with the MCP protocol communication on STDOUT.
+
 ### "Q CLI exited with code 2" error
 
 If you encounter this error with the `ask_q` tool, it's likely due to how the prompt is being passed to the Q CLI. The server has been updated to use stdin for passing prompts instead of command line arguments, which resolves this issue.
