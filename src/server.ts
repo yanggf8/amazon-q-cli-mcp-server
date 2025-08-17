@@ -78,6 +78,28 @@ class AmazonQMCPServer {
             },
           },
           {
+            name: 'cue_q',
+            description: 'Execute Amazon Q CLI with a prompt to get AI assistance (alias for ask_q)',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                prompt: {
+                  type: 'string',
+                  description: 'The question or prompt to send to Amazon Q',
+                },
+                model: {
+                  type: 'string',
+                  description: 'Model to use (optional)',
+                },
+                agent: {
+                  type: 'string',
+                  description: 'Agent/context profile to use (optional)',
+                },
+              },
+              required: ['prompt'],
+            },
+          },
+          {
             name: 'q_translate',
             description: 'Convert natural language to shell commands using Amazon Q',
             inputSchema: {
@@ -135,6 +157,7 @@ class AmazonQMCPServer {
       try {
         switch (name) {
           case 'ask_q':
+          case 'cue_q':
             return await this.handleAskQ(args);
           case 'q_translate':
             return await this.handleQTranslate(args);

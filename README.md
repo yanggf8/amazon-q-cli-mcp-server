@@ -7,6 +7,7 @@ This is a Model Context Protocol (MCP) server that wraps the Amazon Q CLI, allow
 The MCP server provides the following tools:
 
 - **ask_q**: Execute Amazon Q CLI with a prompt to get AI assistance
+- **cue_q**: Execute Amazon Q CLI with a prompt to get AI assistance (alias for ask_q)
 - **q_translate**: Convert natural language to shell commands using Amazon Q
 - **q_status**: Check Amazon Q CLI installation and configuration status
 - **fetch_chunk**: Fetch a byte range from a URL (chunked HTTP fetch)
@@ -86,6 +87,27 @@ Chat with Amazon Q CLI to get AI assistance.
 ```json
 {
   "name": "ask_q",
+  "arguments": {
+    "prompt": "How do I create an S3 bucket using AWS CLI?",
+    "model": "claude-4-sonnet",
+    "agent": "my-agent"
+  }
+}
+```
+
+### cue_q
+
+Chat with Amazon Q CLI to get AI assistance (alias for ask_q).
+
+**Parameters:**
+- `prompt` (required): The message to send to Amazon Q
+- `model` (optional): Model to use
+- `agent` (optional): Agent/context profile to use
+
+**Example:**
+```json
+{
+  "name": "cue_q",
   "arguments": {
     "prompt": "How do I create an S3 bucket using AWS CLI?",
     "model": "claude-4-sonnet",
