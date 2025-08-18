@@ -68,6 +68,25 @@ If you built from source, use the full path:
 }
 ```
 
+### With Claude Code CLI MCP Client
+
+If you're using the Claude Code CLI MCP client, you can install the server at user level:
+
+```bash
+# Build the server first
+npm install
+npm run build
+
+# Add to Claude Code CLI with user scope (available in all projects)
+claude mcp add -s user amazon-q-cli node /path/to/amazon-q-cli-mcp-server/dist/server.js
+
+# Verify installation
+claude mcp list
+claude mcp get amazon-q-cli
+```
+
+The `-s user` flag installs the server at user level, making it available across all your projects.
+
 ### With Other MCP Hosts
 
 The server uses stdio transport, so it can be used with any MCP host that supports stdio. Configure it according to your host's documentation.
