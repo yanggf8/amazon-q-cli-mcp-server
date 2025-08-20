@@ -313,3 +313,7 @@ This project is licensed under the Apache License 2.0 - see the LICENSE file for
 - [Amazon Q CLI](https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/command-line-getting-started.html)
 - [Model Context Protocol](https://modelcontextprotocol.io/)
 - [Gemini CLI MCP Implementation](https://github.com/google-gemini/gemini-cli) (inspiration for this project)
+
+---
+
+*Last updated: August 2024*
