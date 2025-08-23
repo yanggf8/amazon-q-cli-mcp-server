@@ -12,6 +12,15 @@ The MCP server provides the following tools:
 - **q_status**: Check Amazon Q CLI installation and configuration status
 - **fetch_chunk**: Fetch a byte range from a URL (chunked HTTP fetch)
 
+### Session Management
+
+The server implements **automatic session persistence** using Amazon Q CLI's native `--resume` functionality:
+
+- **Session Isolation**: Each MCP connection gets its own conversation history
+- **Automatic Resume**: Conversations automatically continue across tool calls
+- **Directory Mapping**: Sessions are mapped to `~/.amazon-q-mcp/sessions/{sessionId}/`
+- **Zero Configuration**: Works seamlessly with any MCP client
+
 ## Prerequisites
 
 1. **Amazon Q CLI**: Make sure the Amazon Q CLI (`q`) is installed and accessible in your PATH

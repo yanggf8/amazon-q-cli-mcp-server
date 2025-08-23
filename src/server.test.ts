@@ -121,7 +121,7 @@ describe('AmazonQMCPServer', () => {
 
     it('should handle q_translate', async () => {
       const validArgs = {
-        query: 'list all files in current directory',
+        task: 'list all files in current directory',
       };
 
       // Mock successful execution
@@ -129,11 +129,11 @@ describe('AmazonQMCPServer', () => {
         stdout: { on: vi.fn((event, cb) => event === 'data' && cb('ls -la')) },
         stderr: { on: vi.fn() },
         on: vi.fn((event, cb) => event === 'close' && cb(0)),
-        stdin: { end: vi.fn() },
+        stdin: { end: vi.fn(), write: vi.fn() },
       };
       mockSpawn.mockReturnValue(mockChild as any);
 
-      const result = await (server as any).handleQTranslate(validArgs);
+      const result = await (server as any).handleQTranslate(validArgs, 'test-session');
       
       expect(result.content).toHaveLength(1);
       expect(result.content[0].type).toBe('text');

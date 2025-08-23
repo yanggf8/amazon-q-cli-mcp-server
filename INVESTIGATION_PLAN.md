@@ -30,22 +30,24 @@ The MCP server is well-structured and MCP-compliant with the following strengths
 
 **Implementation Priority**: Medium (Phase 1 implementation recommended)
 
-### 2. Session Management Investigation
+### 2. Session Management Investigation ✅ **COMPLETED**
 **Current Issue**: No conversation history or context persistence
 **Desired State**: Conversation state management like chat-cli's conversation/ module
 
-**Investigation Questions**:
-- How does the Amazon Q CLI manage conversation sessions?
-- What persistence mechanisms are available?
-- Can conversation history be retrieved and restored?
-- How does the CLI handle multi-turn conversations?
-- What's the session lifecycle management?
+**Investigation Results**:
+- **🟢 Finding**: Session management is HIGHLY feasible with Amazon Q CLI's native features
+- Amazon Q CLI provides `--resume` flag for directory-scoped conversation persistence
+- Manual session commands: `/save`, `/load`, `/compact`, `/usage`, `/clear`
+- JSON-based storage in `~/.aws/amazonq/history/` with portable conversation files
+- Context management with token counting and intelligent summarization
 
-**Expected Outcomes**:
-- Multi-turn conversation capability
-- Conversation history persistence
-- Context-aware responses
-- Session resume functionality
+**Implementation Strategy**: Session-directory mapping approach
+- Map MCP session IDs to working directories: `~/.amazon-q-mcp/sessions/{sessionId}/`
+- Execute Q CLI with `--resume` flag in session-specific directories
+- Leverage Amazon Q CLI's native session management for conversation persistence
+- Each MCP connection gets isolated conversation history
+
+**Implementation Status**: ✅ **COMPLETED**
 
 ### 3. Error Recovery Patterns Investigation
 **Current Issue**: Basic error handling vs sophisticated error management

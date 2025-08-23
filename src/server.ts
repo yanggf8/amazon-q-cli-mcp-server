@@ -14,6 +14,9 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { spawn } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 class AmazonQMCPServer {
   private server: Server;
@@ -151,16 +154,19 @@ class AmazonQMCPServer {
       };
     });
 
-    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    this.server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
       const { name, arguments: args } = request.params;
+      const { sessionId, requestId } = extra || {};
+
+      console.error(`[${requestId || 'unknown'}] Tool: ${name}, Session: ${sessionId || 'none'}`);
 
       try {
         switch (name) {
           case 'ask_q':
           case 'cue_q':
-            return await this.handleAskQ(args);
+            return await this.handleAskQ(args, sessionId);
           case 'q_translate':
-            return await this.handleQTranslate(args);
+            return await this.handleQTranslate(args, sessionId);
           case 'fetch_chunk':
             return await this.handleFetchChunk(args);
           case 'q_status':
@@ -170,6 +176,7 @@ class AmazonQMCPServer {
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`[${requestId || 'unknown'}] Error in ${name}:`, error);
         return {
           content: [
             {
@@ -182,7 +189,20 @@ class AmazonQMCPServer {
     });
   }
 
-  private async handleAskQ(args: any) {
+  private getSessionDirectory(sessionId?: string): string {
+    const effectiveSessionId = sessionId || 'default';
+    const sessionDir = path.join(os.homedir(), '.amazon-q-mcp', 'sessions', effectiveSessionId);
+    
+    // Create directory if it doesn't exist
+    if (!fs.existsSync(sessionDir)) {
+      fs.mkdirSync(sessionDir, { recursive: true });
+      console.error(`[INFO] Created session directory: ${sessionDir}`);
+    }
+    
+    return sessionDir;
+  }
+
+  private async handleAskQ(args: any, sessionId?: string) {
     const schema = z.object({
       prompt: z.string(),
       model: z.string().optional(),
@@ -192,7 +212,7 @@ class AmazonQMCPServer {
     const { prompt, model, agent } = schema.parse(args);
 
     try {
-      const qArgs = ['chat', '--no-interactive'];
+      const qArgs = ['chat', '--resume', '--no-interactive'];
       
       if (model) {
         qArgs.push('--model', model);
@@ -202,8 +222,11 @@ class AmazonQMCPServer {
         qArgs.push('--agent', agent);
       }
 
-      // Use stdin to pass the prompt instead of command line argument
-      const result = await this.executeQCommandWithInput(qArgs, prompt);
+      // Get session directory for this session
+      const sessionDir = this.getSessionDirectory(sessionId);
+
+      // Use stdin to pass the prompt and execute in session directory
+      const result = await this.executeQCommandWithInputInDirectory(qArgs, prompt, sessionDir);
       return {
         content: [
           {
@@ -217,7 +240,7 @@ class AmazonQMCPServer {
     }
   }
 
-  private async handleQTranslate(args: any) {
+  private async handleQTranslate(args: any, sessionId?: string) {
     const schema = z.object({
       task: z.string(),
     });
@@ -225,7 +248,10 @@ class AmazonQMCPServer {
     const { task } = schema.parse(args);
 
     try {
-      const result = await this.executeQCommandWithInput(['translate'], task);
+      // Get session directory for consistent context
+      const sessionDir = this.getSessionDirectory(sessionId);
+      
+      const result = await this.executeQCommandWithInputInDirectory(['translate'], task, sessionDir);
       return {
         content: [
           {
@@ -382,6 +408,43 @@ class AmazonQMCPServer {
           resolve({ stdout, stderr });
         } else {
           reject(new Error(`Q CLI exited with code ${code}`));
+        }
+      });
+
+      // Write input to stdin and close it
+      child.stdin.write(input + '\n');
+      child.stdin.end();
+    });
+  }
+
+  private async executeQCommandWithInputInDirectory(args: string[], input: string, workingDir: string): Promise<{ stdout: string; stderr: string }> {
+    return new Promise((resolve, reject) => {
+      const child = spawn('q', args, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        cwd: workingDir, // Execute in session-specific directory
+        env: { ...process.env }
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      child.stdout.on('data', (data) => {
+        stdout += data.toString();
+      });
+
+      child.stderr.on('data', (data) => {
+        stderr += data.toString();
+      });
+
+      child.on('error', (error) => {
+        reject(new Error(`Failed to execute Q CLI: ${error.message}`));
+      });
+
+      child.on('close', (code) => {
+        if (code === 0) {
+          resolve({ stdout, stderr });
+        } else {
+          reject(new Error(`Q CLI exited with code ${code}: ${stderr}`));
         }
       });
 
