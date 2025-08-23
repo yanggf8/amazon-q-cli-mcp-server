@@ -21,6 +21,16 @@ The server implements **automatic session persistence** using Amazon Q CLI's nat
 - **Directory Mapping**: Sessions are mapped to `~/.amazon-q-mcp/sessions/{sessionId}/`
 - **Zero Configuration**: Works seamlessly with any MCP client
 
+### Error Recovery
+
+The server implements **sophisticated error recovery patterns** with intelligent error handling:
+
+- **Granular Error Classification**: 7 distinct error types (Network, Authentication, Service Capacity, etc.)
+- **Exponential Backoff Retry**: Automatic retry for transient failures with jitter
+- **Context-Specific Guidance**: Actionable recovery instructions for each error type
+- **Comprehensive Diagnostics**: Built-in health checks and system status reporting
+- **Professional Error Formatting**: User-friendly error messages with technical details
+
 ## Prerequisites
 
 1. **Amazon Q CLI**: Make sure the Amazon Q CLI (`q`) is installed and accessible in your PATH

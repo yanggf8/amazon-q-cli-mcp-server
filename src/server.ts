@@ -18,10 +18,44 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
+// Enhanced Error Classification System
+enum ErrorType {
+  NETWORK_ERROR = 'NETWORK_ERROR',
+  AUTHENTICATION_ERROR = 'AUTHENTICATION_ERROR',
+  SERVICE_CAPACITY_ERROR = 'SERVICE_CAPACITY_ERROR',
+  CONFIGURATION_ERROR = 'CONFIGURATION_ERROR',
+  VALIDATION_ERROR = 'VALIDATION_ERROR',
+  Q_CLI_NOT_FOUND = 'Q_CLI_NOT_FOUND',
+  UNKNOWN_ERROR = 'UNKNOWN_ERROR'
+}
+
+interface ErrorGuidance {
+  message: string;
+  actions: string[];
+  retryable: boolean;
+}
+
+class MCPError extends Error {
+  constructor(
+    public type: ErrorType,
+    public code: string,
+    message: string,
+    public retryable: boolean = false,
+    public guidance?: ErrorGuidance
+  ) {
+    super(message);
+    this.name = 'MCPError';
+  }
+}
+
 class AmazonQMCPServer {
   private server: Server;
+  private startTime: Date;
+  private errorGuidanceMap!: Map<ErrorType, ErrorGuidance>;
 
   constructor() {
+    this.startTime = new Date();
+    this.initializeErrorGuidance();
     this.server = new Server(
       {
         name: 'amazon-q-cli-mcp-server',
@@ -175,16 +209,16 @@ class AmazonQMCPServer {
             throw new Error(`Unknown tool: ${name}`);
         }
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
         console.error(`[${requestId || 'unknown'}] Error in ${name}:`, error);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Error: ${errorMessage}`,
-            },
-          ],
-        };
+        
+        // If it's already a classified MCPError, format it properly
+        if (error instanceof MCPError) {
+          return this.formatErrorResponse(error, String(requestId));
+        }
+        
+        // Otherwise, classify and format the error
+        const classifiedError = this.classifyError(error, name);
+        return this.formatErrorResponse(classifiedError, String(requestId));
       }
     });
   }
@@ -202,16 +236,233 @@ class AmazonQMCPServer {
     return sessionDir;
   }
 
+  private initializeErrorGuidance(): void {
+    this.errorGuidanceMap = new Map<ErrorType, ErrorGuidance>([
+      [ErrorType.AUTHENTICATION_ERROR, {
+        message: "Authentication failed with Amazon Q CLI",
+        actions: [
+          "Run 'q status' to check authentication status",
+          "Try 'q login' to re-authenticate",
+          "Verify AWS credentials are properly configured",
+          "Check if you have the necessary Amazon Q permissions"
+        ],
+        retryable: false
+      }],
+      [ErrorType.SERVICE_CAPACITY_ERROR, {
+        message: "Amazon Q service is experiencing high demand",
+        actions: [
+          "Wait a few moments and try again",
+          "The service will automatically retry with exponential backoff",
+          "Consider trying during off-peak hours"
+        ],
+        retryable: true
+      }],
+      [ErrorType.NETWORK_ERROR, {
+        message: "Network connection issue",
+        actions: [
+          "Check your internet connection",
+          "Verify proxy settings if applicable",
+          "Check SSL certificate configuration",
+          "Try connecting from a different network"
+        ],
+        retryable: true
+      }],
+      [ErrorType.Q_CLI_NOT_FOUND, {
+        message: "Amazon Q CLI not found or not accessible",
+        actions: [
+          "Install Amazon Q CLI from AWS documentation",
+          "Ensure 'q' command is in your PATH",
+          "Run 'which q' to verify installation",
+          "Check file permissions on Q CLI executable"
+        ],
+        retryable: false
+      }],
+      [ErrorType.CONFIGURATION_ERROR, {
+        message: "Configuration issue detected",
+        actions: [
+          "Run 'q doctor' to diagnose configuration issues",
+          "Check ~/.aws/config and ~/.aws/credentials files",
+          "Verify AWS region is properly set",
+          "Validate JSON syntax in configuration files"
+        ],
+        retryable: false
+      }],
+      [ErrorType.VALIDATION_ERROR, {
+        message: "Invalid parameters provided",
+        actions: [
+          "Check the parameters passed to the tool",
+          "Refer to tool documentation for valid parameter formats",
+          "Ensure required parameters are provided"
+        ],
+        retryable: false
+      }]
+    ]);
+  }
+
+  private classifyError(error: any, context: string): MCPError {
+    const errorMessage = error?.message || String(error);
+    const stderr = error?.stderr || '';
+    
+    // Authentication errors
+    if (errorMessage.includes('AccessDeniedException') || 
+        errorMessage.includes('UnauthorizedOperation') ||
+        errorMessage.includes('authentication') ||
+        stderr.includes('login required')) {
+      return new MCPError(
+        ErrorType.AUTHENTICATION_ERROR,
+        'AUTH_FAILED',
+        errorMessage,
+        false,
+        this.errorGuidanceMap.get(ErrorType.AUTHENTICATION_ERROR)
+      );
+    }
+    
+    // Service capacity errors
+    if (errorMessage.includes('trouble responding right now') ||
+        errorMessage.includes('capacity') ||
+        errorMessage.includes('rate limit') ||
+        errorMessage.includes('throttle')) {
+      return new MCPError(
+        ErrorType.SERVICE_CAPACITY_ERROR,
+        'SERVICE_OVERLOAD',
+        errorMessage,
+        true,
+        this.errorGuidanceMap.get(ErrorType.SERVICE_CAPACITY_ERROR)
+      );
+    }
+    
+    // Network errors
+    if (errorMessage.includes('ECONNREFUSED') ||
+        errorMessage.includes('ETIMEDOUT') ||
+        errorMessage.includes('ENOTFOUND') ||
+        errorMessage.includes('SSL') ||
+        errorMessage.includes('certificate')) {
+      return new MCPError(
+        ErrorType.NETWORK_ERROR,
+        'NETWORK_FAILED',
+        errorMessage,
+        true,
+        this.errorGuidanceMap.get(ErrorType.NETWORK_ERROR)
+      );
+    }
+    
+    // Q CLI not found
+    if (errorMessage.includes('Failed to execute Q CLI') ||
+        errorMessage.includes('ENOENT') ||
+        errorMessage.includes('command not found')) {
+      return new MCPError(
+        ErrorType.Q_CLI_NOT_FOUND,
+        'Q_CLI_MISSING',
+        errorMessage,
+        false,
+        this.errorGuidanceMap.get(ErrorType.Q_CLI_NOT_FOUND)
+      );
+    }
+    
+    // Configuration errors
+    if (errorMessage.includes('configuration') ||
+        errorMessage.includes('config') ||
+        stderr.includes('doctor')) {
+      return new MCPError(
+        ErrorType.CONFIGURATION_ERROR,
+        'CONFIG_ERROR',
+        errorMessage,
+        false,
+        this.errorGuidanceMap.get(ErrorType.CONFIGURATION_ERROR)
+      );
+    }
+    
+    // Default to unknown error
+    return new MCPError(
+      ErrorType.UNKNOWN_ERROR,
+      'UNKNOWN',
+      errorMessage,
+      false,
+      {
+        message: "An unexpected error occurred",
+        actions: [
+          "Check the error details for more information",
+          "Try running the command again",
+          "Contact support if the issue persists"
+        ],
+        retryable: false
+      }
+    );
+  }
+
+  private async executeWithRetry<T>(
+    operation: () => Promise<T>,
+    context: string,
+    maxRetries: number = 3
+  ): Promise<T> {
+    let lastError: any;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error;
+        const classifiedError = this.classifyError(error, context);
+        
+        console.error(`[${context}] Attempt ${attempt} failed:`, classifiedError.type, classifiedError.message);
+        
+        // Don't retry if error is not retryable or we've reached max attempts
+        if (!classifiedError.retryable || attempt === maxRetries) {
+          throw classifiedError;
+        }
+        
+        // Calculate delay with exponential backoff
+        const baseDelay = 500; // 500ms
+        const maxDelay = 10000; // 10 seconds
+        const delay = Math.min(baseDelay * Math.pow(2, attempt - 1), maxDelay);
+        const jitter = Math.random() * 0.25 * delay; // 25% jitter
+        const finalDelay = delay + jitter;
+        
+        console.error(`[${context}] Retrying in ${Math.round(finalDelay)}ms... (attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, finalDelay));
+      }
+    }
+    
+    throw lastError;
+  }
+
+  private formatErrorResponse(error: MCPError, requestId?: string): any {
+    const errorInfo = {
+      type: error.type,
+      code: error.code,
+      message: error.message,
+      retryable: error.retryable,
+      guidance: error.guidance,
+      timestamp: new Date().toISOString(),
+      requestId: requestId || 'unknown'
+    };
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `❌ **${error.guidance?.message || 'Error'}**\n\n` +
+                `**Error Type:** ${error.type}\n` +
+                `**Code:** ${error.code}\n` +
+                `**Retryable:** ${error.retryable ? 'Yes' : 'No'}\n\n` +
+                `**Recommended Actions:**\n` +
+                (error.guidance?.actions.map(action => `• ${action}`).join('\n') || '• Contact support') +
+                `\n\n**Technical Details:**\n\`\`\`\n${error.message}\n\`\`\``,
+        },
+      ],
+    };
+  }
+
   private async handleAskQ(args: any, sessionId?: string) {
-    const schema = z.object({
-      prompt: z.string(),
-      model: z.string().optional(),
-      agent: z.string().optional(),
-    });
-
-    const { prompt, model, agent } = schema.parse(args);
-
     try {
+      const schema = z.object({
+        prompt: z.string(),
+        model: z.string().optional(),
+        agent: z.string().optional(),
+      });
+
+      const { prompt, model, agent } = schema.parse(args);
+
       const qArgs = ['chat', '--resume', '--no-interactive'];
       
       if (model) {
@@ -225,8 +476,12 @@ class AmazonQMCPServer {
       // Get session directory for this session
       const sessionDir = this.getSessionDirectory(sessionId);
 
-      // Use stdin to pass the prompt and execute in session directory
-      const result = await this.executeQCommandWithInputInDirectory(qArgs, prompt, sessionDir);
+      // Execute with retry and error recovery
+      const result = await this.executeWithRetry(
+        () => this.executeQCommandWithInputInDirectory(qArgs, prompt, sessionDir),
+        'ask_q'
+      );
+
       return {
         content: [
           {
@@ -236,22 +491,44 @@ class AmazonQMCPServer {
         ],
       };
     } catch (error) {
-      throw new Error(`Amazon Q CLI failed: ${error instanceof Error ? error.message : String(error)}`);
+      // Handle validation errors
+      if (error instanceof z.ZodError) {
+        const validationError = new MCPError(
+          ErrorType.VALIDATION_ERROR,
+          'INVALID_PARAMS',
+          `Invalid parameters: ${error.errors.map(e => e.message).join(', ')}`,
+          false,
+          this.errorGuidanceMap.get(ErrorType.VALIDATION_ERROR)
+        );
+        throw validationError;
+      }
+
+      // Re-throw MCPError as-is, or classify unknown errors
+      if (error instanceof MCPError) {
+        throw error;
+      }
+
+      throw this.classifyError(error, 'ask_q');
     }
   }
 
   private async handleQTranslate(args: any, sessionId?: string) {
-    const schema = z.object({
-      task: z.string(),
-    });
-
-    const { task } = schema.parse(args);
-
     try {
+      const schema = z.object({
+        task: z.string(),
+      });
+
+      const { task } = schema.parse(args);
+
       // Get session directory for consistent context
       const sessionDir = this.getSessionDirectory(sessionId);
       
-      const result = await this.executeQCommandWithInputInDirectory(['translate'], task, sessionDir);
+      // Execute with retry and error recovery
+      const result = await this.executeWithRetry(
+        () => this.executeQCommandWithInputInDirectory(['translate'], task, sessionDir),
+        'q_translate'
+      );
+
       return {
         content: [
           {
@@ -261,23 +538,183 @@ class AmazonQMCPServer {
         ],
       };
     } catch (error) {
-      throw new Error(`Translation failed: ${error instanceof Error ? error.message : String(error)}`);
+      // Handle validation errors
+      if (error instanceof z.ZodError) {
+        const validationError = new MCPError(
+          ErrorType.VALIDATION_ERROR,
+          'INVALID_PARAMS',
+          `Invalid parameters: ${error.errors.map(e => e.message).join(', ')}`,
+          false,
+          this.errorGuidanceMap.get(ErrorType.VALIDATION_ERROR)
+        );
+        throw validationError;
+      }
+
+      // Re-throw MCPError as-is, or classify unknown errors
+      if (error instanceof MCPError) {
+        throw error;
+      }
+
+      throw this.classifyError(error, 'q_translate');
     }
   }
 
   private async handleQStatus(args: any) {
     try {
-      const result = await this.executeQCommand(['doctor']);
+      const uptime = Date.now() - this.startTime.getTime();
+      const uptimeSeconds = Math.floor(uptime / 1000);
+      const uptimeMinutes = Math.floor(uptimeSeconds / 60);
+      const uptimeHours = Math.floor(uptimeMinutes / 60);
+
+      const formatUptime = () => {
+        if (uptimeHours > 0) {
+          return `${uptimeHours}h ${uptimeMinutes % 60}m ${uptimeSeconds % 60}s`;
+        } else if (uptimeMinutes > 0) {
+          return `${uptimeMinutes}m ${uptimeSeconds % 60}s`;
+        } else {
+          return `${uptimeSeconds}s`;
+        }
+      };
+
+      // Run diagnostics
+      const diagnostics = await this.runDiagnostics();
+
+      const status = {
+        server: "Amazon Q CLI MCP Server",
+        version: "1.0.0", 
+        status: diagnostics.overall ? "healthy" : "unhealthy",
+        uptime: formatUptime(),
+        startTime: this.startTime.toISOString(),
+        pid: process.pid,
+        nodeVersion: process.version,
+        platform: process.platform,
+        availableTools: ["ask_q", "cue_q", "q_translate", "fetch_chunk", "q_status"],
+        memoryUsage: {
+          rss: `${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB`,
+          heapUsed: `${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`, 
+          heapTotal: `${Math.round(process.memoryUsage().heapTotal / 1024 / 1024)}MB`,
+        },
+        diagnostics: diagnostics,
+        sessionManagement: {
+          enabled: true,
+          sessionDirectory: path.join(os.homedir(), '.amazon-q-mcp', 'sessions'),
+          activeSessions: this.getActiveSessionCount()
+        }
+      };
+
       return {
         content: [
           {
             type: 'text',
-            text: result.stdout,
+            text: `# Amazon Q CLI MCP Server Status\n\n` +
+                  `**Overall Status:** ${status.status.toUpperCase()} ${status.status === 'healthy' ? '✅' : '❌'}\n` +
+                  `**Uptime:** ${status.uptime}\n` +
+                  `**Node Version:** ${status.nodeVersion}\n` +
+                  `**Platform:** ${status.platform}\n` +
+                  `**Memory Usage:** ${status.memoryUsage.rss}\n\n` +
+                  `## Diagnostics\n\n` +
+                  `- **Amazon Q CLI:** ${diagnostics.qCliAvailable ? '✅ Available' : '❌ Not Found'}\n` +
+                  `- **Authentication:** ${diagnostics.authStatus ? '✅ Valid' : '❌ Invalid'}\n` +
+                  `- **Configuration:** ${diagnostics.configValid ? '✅ Valid' : '❌ Invalid'}\n` +
+                  `- **Session Management:** ${diagnostics.sessionDirWritable ? '✅ Working' : '❌ Error'}\n\n` +
+                  `## Session Information\n\n` +
+                  `- **Session Directory:** \`${status.sessionManagement.sessionDirectory}\`\n` +
+                  `- **Active Sessions:** ${status.sessionManagement.activeSessions}\n\n` +
+                  `## Available Tools\n\n` +
+                  status.availableTools.map(tool => `- **${tool}**`).join('\n') +
+                  `\n\n---\n\n` +
+                  `<details><summary>Raw Status JSON</summary>\n\n\`\`\`json\n${JSON.stringify(status, null, 2)}\n\`\`\`\n\n</details>`,
           },
         ],
       };
     } catch (error) {
-      throw new Error(`Status check failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw this.classifyError(error, 'q_status');
+    }
+  }
+
+  private async runDiagnostics() {
+    const diagnostics = {
+      overall: true,
+      qCliAvailable: false,
+      authStatus: false,
+      configValid: false,
+      sessionDirWritable: false,
+      issues: [] as string[]
+    };
+
+    try {
+      // Check if Q CLI is available
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn('q', ['--version'], { stdio: 'pipe' });
+        child.on('close', (code) => {
+          if (code === 0) {
+            diagnostics.qCliAvailable = true;
+            resolve();
+          } else {
+            diagnostics.issues.push('Amazon Q CLI not found or not executable');
+            reject(new Error('Q CLI not available'));
+          }
+        });
+        child.on('error', () => {
+          diagnostics.issues.push('Amazon Q CLI not found in PATH');
+          reject(new Error('Q CLI not found'));
+        });
+      });
+    } catch (error) {
+      diagnostics.overall = false;
+    }
+
+    try {
+      // Check session directory
+      const sessionDir = path.join(os.homedir(), '.amazon-q-mcp', 'sessions');
+      if (!fs.existsSync(sessionDir)) {
+        fs.mkdirSync(sessionDir, { recursive: true });
+      }
+      // Test write access
+      const testFile = path.join(sessionDir, '.test');
+      fs.writeFileSync(testFile, 'test');
+      fs.unlinkSync(testFile);
+      diagnostics.sessionDirWritable = true;
+    } catch (error) {
+      diagnostics.issues.push('Cannot write to session directory');
+      diagnostics.overall = false;
+    }
+
+    try {
+      // Check basic config/auth by trying a simple command
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn('q', ['status'], { stdio: 'pipe' });
+        child.on('close', (code) => {
+          if (code === 0) {
+            diagnostics.authStatus = true;
+            diagnostics.configValid = true;
+            resolve();
+          } else {
+            diagnostics.issues.push('Authentication or configuration issue');
+            reject(new Error('Auth/config issue'));
+          }
+        });
+        child.on('error', reject);
+      });
+    } catch (error) {
+      // This is not critical for overall health
+      diagnostics.issues.push('Cannot verify authentication status');
+    }
+
+    return diagnostics;
+  }
+
+  private getActiveSessionCount(): number {
+    try {
+      const sessionDir = path.join(os.homedir(), '.amazon-q-mcp', 'sessions');
+      if (!fs.existsSync(sessionDir)) {
+        return 0;
+      }
+      return fs.readdirSync(sessionDir).filter(dir => 
+        fs.statSync(path.join(sessionDir, dir)).isDirectory()
+      ).length;
+    } catch (error) {
+      return 0;
     }
   }
 
