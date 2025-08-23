@@ -130,6 +130,12 @@ For systematic investigation of improvements based on chat-cli architecture anal
 - `INVESTIGATION_PLAN.md` - Detailed investigation plan and findings
 - `src/server.ts` - Main MCP server implementation
 - `package.json` - Dependencies and configuration
+- `CLAUDE.md` - Project-specific Claude configuration and investigation tracking
+
+**Cleanup Status:**
+- ✅ Moved investigation framework from personal CLAUDE.md to project CLAUDE.md
+- ✅ Personal CLAUDE.md now contains only global configuration
+- ✅ Project CLAUDE.md contains complete investigation framework
 - `README.md` - Project documentation
 
 ## Project-Specific Notes
