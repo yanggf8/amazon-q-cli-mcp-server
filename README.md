@@ -12,6 +12,25 @@ The MCP server provides the following tools:
 - **q_status**: Check Amazon Q CLI installation and configuration status
 - **fetch_chunk**: Fetch a byte range from a URL (chunked HTTP fetch)
 
+### Session Management
+
+The server implements **automatic session persistence** using Amazon Q CLI's native `--resume` functionality:
+
+- **Session Isolation**: Each MCP connection gets its own conversation history
+- **Automatic Resume**: Conversations automatically continue across tool calls
+- **Directory Mapping**: Sessions are mapped to `~/.amazon-q-mcp/sessions/{sessionId}/`
+- **Zero Configuration**: Works seamlessly with any MCP client
+
+### Error Recovery
+
+The server implements **sophisticated error recovery patterns** with intelligent error handling:
+
+- **Granular Error Classification**: 7 distinct error types (Network, Authentication, Service Capacity, etc.)
+- **Exponential Backoff Retry**: Automatic retry for transient failures with jitter
+- **Context-Specific Guidance**: Actionable recovery instructions for each error type
+- **Comprehensive Diagnostics**: Built-in health checks and system status reporting
+- **Professional Error Formatting**: User-friendly error messages with technical details
+
 ## Prerequisites
 
 1. **Amazon Q CLI**: Make sure the Amazon Q CLI (`q`) is installed and accessible in your PATH
@@ -314,3 +333,7 @@ This project is licensed under the Apache License 2.0 - see the LICENSE file for
 - [Amazon Q CLI](https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/command-line-getting-started.html)
 - [Model Context Protocol](https://modelcontextprotocol.io/)
 - [Gemini CLI MCP Implementation](https://github.com/google-gemini/gemini-cli) (inspiration for this project)
+
+---
+
+*Last updated: August 2024*
