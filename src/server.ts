@@ -30,9 +30,15 @@ class AmazonQMCPServer {
         },
       }
     );
+  }
 
+  private async initialize(): Promise<void> {
+    console.error('[Amazon Q MCP] init Amazon Q CLI MCP Server');
+    
     this.setupToolHandlers();
     this.setupErrorHandling();
+    
+    // Add any other async initialization here if needed in the future
   }
 
   private setupErrorHandling(): void {
@@ -78,7 +84,7 @@ class AmazonQMCPServer {
             },
           },
           {
-            name: 'cue_q',
+            name: 'take_q',
             description: 'Execute Amazon Q CLI with a prompt to get AI assistance (alias for ask_q)',
             inputSchema: {
               type: 'object',
@@ -157,7 +163,7 @@ class AmazonQMCPServer {
       try {
         switch (name) {
           case 'ask_q':
-          case 'cue_q':
+          case 'take_q':
             return await this.handleAskQ(args);
           case 'q_translate':
             return await this.handleQTranslate(args);
@@ -392,9 +398,11 @@ class AmazonQMCPServer {
   }
 
   async run(): Promise<void> {
+    await this.initialize();
+    
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
-    console.error('[INFO] Amazon Q CLI MCP Server running on stdio (this STDERR message is by design)');
+    console.error('[Amazon Q MCP] Amazon Q CLI MCP Server listening on stdio');
   }
 }
 
