@@ -7,10 +7,29 @@ This is a Model Context Protocol (MCP) server that wraps the Amazon Q CLI, allow
 The MCP server provides the following tools:
 
 - **ask_q**: Execute Amazon Q CLI with a prompt to get AI assistance
-- **cue_q**: Execute Amazon Q CLI with a prompt to get AI assistance (alias for ask_q)
+- **take_q**: Execute Amazon Q CLI with a prompt to get AI assistance (alias for ask_q)
 - **q_translate**: Convert natural language to shell commands using Amazon Q
 - **q_status**: Check Amazon Q CLI installation and configuration status
 - **fetch_chunk**: Fetch a byte range from a URL (chunked HTTP fetch)
+
+### Session Management
+
+The server implements **automatic session persistence** using Amazon Q CLI's native `--resume` functionality:
+
+- **Session Isolation**: Each MCP connection gets its own conversation history
+- **Automatic Resume**: Conversations automatically continue across tool calls
+- **Directory Mapping**: Sessions are mapped to `~/.amazon-q-mcp/sessions/{sessionId}/`
+- **Zero Configuration**: Works seamlessly with any MCP client
+
+### Error Recovery
+
+The server implements **sophisticated error recovery patterns** with intelligent error handling:
+
+- **Granular Error Classification**: 7 distinct error types (Network, Authentication, Service Capacity, etc.)
+- **Exponential Backoff Retry**: Automatic retry for transient failures with jitter
+- **Context-Specific Guidance**: Actionable recovery instructions for each error type
+- **Comprehensive Diagnostics**: Built-in health checks and system status reporting
+- **Professional Error Formatting**: User-friendly error messages with technical details
 
 ## Prerequisites
 
@@ -114,7 +133,7 @@ Chat with Amazon Q CLI to get AI assistance.
 }
 ```
 
-### cue_q
+### take_q
 
 Chat with Amazon Q CLI to get AI assistance (alias for ask_q).
 
@@ -126,7 +145,7 @@ Chat with Amazon Q CLI to get AI assistance (alias for ask_q).
 **Example:**
 ```json
 {
-  "name": "cue_q",
+  "name": "take_q",
   "arguments": {
     "prompt": "How do I create an S3 bucket using AWS CLI?",
     "model": "claude-4-sonnet",
@@ -234,14 +253,15 @@ npm test
 
 ## Troubleshooting
 
-### Normal STDERR Message
+### Normal STDERR Messages
 
-When the MCP server starts, you'll see this message in STDERR:
+When the MCP server starts, you'll see these messages in STDERR:
 ```
-[INFO] Amazon Q CLI MCP Server running on stdio (this STDERR message is by design)
+[Amazon Q MCP] init Amazon Q CLI MCP Server
+[Amazon Q MCP] Amazon Q CLI MCP Server listening on stdio
 ```
 
-**This is completely normal and expected.** The message is intentionally sent to STDERR to indicate the server has started successfully without interfering with the MCP protocol communication on STDOUT.
+**These messages are completely normal and expected.** They are intentionally sent to STDERR to indicate the server initialization and startup without interfering with the MCP protocol communication on STDOUT.
 
 ### "Q CLI exited with code 2" error
 
