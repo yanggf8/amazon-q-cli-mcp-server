@@ -276,6 +276,76 @@ export AWS_DEFAULT_REGION=us-west-2
 
 Ensure your AWS credentials have the necessary permissions to use Amazon Q services.
 
+## Session Logging
+
+The Amazon Q CLI MCP Server implements separated session-based logging to track each stdio server instance independently.
+
+### Log Structure
+
+```
+~/.amazon-q-mcp/logs/
+├── sessions/
+│   ├── amazon-q-1735689234-abc123.log    # Individual session logs
+│   ├── amazon-q-1735689235-def456.log    # Each Claude Code instance gets its own log
+│   └── amazon-q-1735689236-ghi789.log
+└── active-sessions.json                   # Registry of active sessions
+```
+
+### Features
+
+- **Separate Logs**: Each MCP server instance writes to its own log file
+- **Session Tracking**: Unique session IDs with timestamps and random components
+- **Claude Code Detection**: Automatically detects Claude Code instances via environment variables or parent process
+- **Structured JSON Logs**: Easy parsing and analysis with timestamps, session info, and metadata
+- **No stderr Interference**: Pure file-based logging that doesn't interfere with MCP protocol communication
+- **Automatic Cleanup**: Stale sessions are cleaned up automatically
+- **Log Rotation**: Files are rotated when they exceed 50MB
+
+### Session Information
+
+Each session tracks:
+- **Session ID**: Unique identifier (e.g., `amazon-q-1735689234-abc123`)
+- **Claude Instance**: Which Claude Code instance launched the server
+- **Process Info**: PID, project path, start time, status
+- **Activity Log**: All tool calls, errors, and server events
+
+### Viewing Logs
+
+Use the included log viewer:
+```bash
+node scripts/view-logs.cjs
+```
+
+Or view logs manually:
+```bash
+# View all session logs
+ls ~/.amazon-q-mcp/logs/sessions/
+
+# Follow a specific session
+tail -f ~/.amazon-q-mcp/logs/sessions/amazon-q-SESSION_ID.log
+
+# View active sessions
+cat ~/.amazon-q-mcp/logs/active-sessions.json
+```
+
+### Log Entries
+
+Each log entry contains:
+```json
+{
+  "timestamp": "2025-08-31T15:07:49.062Z",
+  "sessionId": "amazon-q-meztrglh-8lc0",
+  "claudeInstance": "claude-9038",
+  "pid": 9045,
+  "type": "TOOL_CALL",
+  "message": "Tool 'q_status' called",
+  "metadata": {
+    "toolName": "q_status",
+    "argsPreview": {}
+  }
+}
+```
+
 ## Architecture
 
 This MCP server acts as a bridge between MCP hosts and the Amazon Q CLI:
@@ -283,7 +353,7 @@ This MCP server acts as a bridge between MCP hosts and the Amazon Q CLI:
 ```
 MCP Host (Claude Desktop, VS Code, etc.)
     ↓ (MCP Protocol)
-Amazon Q CLI MCP Server
+Amazon Q CLI MCP Server (with Session Logging)
     ↓ (Process execution)
 Amazon Q CLI (`q` command)
     ↓ (AWS API calls)
@@ -292,9 +362,10 @@ Amazon Q Service
 
 The server:
 1. Receives MCP tool calls from the host
-2. Translates them into appropriate `q` CLI commands
-3. Executes the commands and captures output
-4. Returns formatted responses back to the MCP host
+2. Logs all activity to session-specific files
+3. Translates calls into appropriate `q` CLI commands
+4. Executes the commands and captures output
+5. Returns formatted responses back to the MCP host
 
 ## Contributing
 
