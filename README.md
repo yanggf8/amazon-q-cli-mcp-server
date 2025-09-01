@@ -31,6 +31,15 @@ The server implements **sophisticated error recovery patterns** with intelligent
 - **Comprehensive Diagnostics**: Built-in health checks and system status reporting
 - **Professional Error Formatting**: User-friendly error messages with technical details
 
+### Process Management
+
+The server implements **robust process lifecycle management** to ensure clean shutdown:
+
+- **Process Tracking**: All spawned Amazon Q CLI processes are tracked for proper cleanup
+- **Graceful Shutdown**: SIGTERM/SIGINT handlers terminate all child processes before exit
+- **Process Groups**: Child processes are created in detached groups for reliable termination
+- **Resource Cleanup**: Prevents orphaned `q_term` processes from persisting after server shutdown
+
 ## Prerequisites
 
 1. **Amazon Q CLI**: Make sure the Amazon Q CLI (`q`) is installed and accessible in your PATH

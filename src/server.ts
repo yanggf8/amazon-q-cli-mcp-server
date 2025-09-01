@@ -15,7 +15,7 @@ import {
   InitializeRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { spawn } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -56,6 +56,7 @@ class AmazonQMCPServer {
   private startTime: Date;
   private sessionLogger: AmazonQSessionLogger;
   private errorGuidanceMap!: Map<ErrorType, ErrorGuidance>;
+  private activeProcesses: Set<ChildProcess> = new Set();
 
   constructor() {
     this.startTime = new Date();
@@ -99,19 +100,28 @@ class AmazonQMCPServer {
       console.error('[MCP Error]', error);
     };
 
-    process.on('SIGINT', async () => {
-      this.sessionLogger.logActivity('SHUTDOWN', 'Received SIGINT signal');
+    const cleanupAndExit = async (signal: string) => {
+      this.sessionLogger.logActivity('SHUTDOWN', `Received ${signal} signal`);
       this.sessionLogger.updateStatus('shutdown');
-      await this.server.close();
-      process.exit(0);
-    });
 
-    process.on('SIGTERM', async () => {
-      this.sessionLogger.logActivity('SHUTDOWN', 'Received SIGTERM signal');
-      this.sessionLogger.updateStatus('shutdown');
+      console.error(`[Amazon Q MCP] Shutting down. Cleaning up ${this.activeProcesses.size} active processes...`);
+      for (const child of this.activeProcesses) {
+        try {
+          // Kill the entire process group
+          process.kill(-child.pid!);
+          this.sessionLogger.logActivity('CLEANUP', `Terminated process group ${child.pid}`);
+        } catch (e) {
+          this.sessionLogger.logActivity('CLEANUP_ERROR', `Failed to terminate process group ${child.pid}`, { error: e instanceof Error ? e.message : String(e) });
+        }
+      }
+      this.activeProcesses.clear();
+
       await this.server.close();
       process.exit(0);
-    });
+    };
+
+    process.on('SIGINT', () => cleanupAndExit('SIGINT'));
+    process.on('SIGTERM', () => cleanupAndExit('SIGTERM'));
   }
 
   private setupToolHandlers(): void {
@@ -753,8 +763,11 @@ class AmazonQMCPServer {
     try {
       // Check if Q CLI is available
       await new Promise<void>((resolve, reject) => {
-        const child = spawn('q', ['--version'], { stdio: 'pipe' });
+        const child = spawn('q', ['--version'], { stdio: 'pipe', detached: true });
+        this.activeProcesses.add(child);
+        const cleanup = () => this.activeProcesses.delete(child);
         child.on('close', (code) => {
+          cleanup();
           if (code === 0) {
             diagnostics.qCliAvailable = true;
             resolve();
@@ -763,7 +776,8 @@ class AmazonQMCPServer {
             reject(new Error('Q CLI not available'));
           }
         });
-        child.on('error', () => {
+        child.on('error', (err) => {
+          cleanup();
           diagnostics.issues.push('Amazon Q CLI not found in PATH');
           reject(new Error('Q CLI not found'));
         });
@@ -791,8 +805,11 @@ class AmazonQMCPServer {
     try {
       // Check basic config/auth by trying a simple command
       await new Promise<void>((resolve, reject) => {
-        const child = spawn('q', ['status'], { stdio: 'pipe' });
+        const child = spawn('q', ['status'], { stdio: 'pipe', detached: true });
+        this.activeProcesses.add(child);
+        const cleanup = () => this.activeProcesses.delete(child);
         child.on('close', (code) => {
+          cleanup();
           if (code === 0) {
             diagnostics.authStatus = true;
             diagnostics.configValid = true;
@@ -802,7 +819,10 @@ class AmazonQMCPServer {
             reject(new Error('Auth/config issue'));
           }
         });
-        child.on('error', reject);
+        child.on('error', (err) => {
+          cleanup();
+          reject(err);
+        });
       });
     } catch (error) {
       // This is not critical for overall health
@@ -897,8 +917,10 @@ class AmazonQMCPServer {
     return new Promise((resolve, reject) => {
       const child = spawn('q', args, {
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env }
+        env: { ...process.env },
+        detached: true
       });
+      this.activeProcesses.add(child);
 
       let stdout = '';
       let stderr = '';
@@ -911,11 +933,17 @@ class AmazonQMCPServer {
         stderr += data.toString();
       });
 
+      const cleanup = () => {
+        this.activeProcesses.delete(child);
+      };
+
       child.on('error', (error) => {
+        cleanup();
         reject(new Error(`Failed to execute Q CLI: ${error.message}`));
       });
 
       child.on('close', (code) => {
+        cleanup();
         if (code === 0) {
           resolve({ stdout, stderr });
         } else {
@@ -929,8 +957,10 @@ class AmazonQMCPServer {
     return new Promise((resolve, reject) => {
       const child = spawn('q', args, {
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env }
+        env: { ...process.env },
+        detached: true
       });
+      this.activeProcesses.add(child);
 
       let stdout = '';
       let stderr = '';
@@ -943,11 +973,17 @@ class AmazonQMCPServer {
         stderr += data.toString();
       });
 
+      const cleanup = () => {
+        this.activeProcesses.delete(child);
+      };
+
       child.on('error', (error) => {
+        cleanup();
         reject(new Error(`Failed to execute Q CLI: ${error.message}`));
       });
 
       child.on('close', (code) => {
+        cleanup();
         if (code === 0) {
           resolve({ stdout, stderr });
         } else {
@@ -966,8 +1002,11 @@ class AmazonQMCPServer {
       const child = spawn('q', args, {
         stdio: ['pipe', 'pipe', 'pipe'],
         cwd: workingDir, // Execute in session-specific directory
-        env: { ...process.env }
+        env: { ...process.env },
+        detached: true // Create a process group
       });
+
+      this.activeProcesses.add(child);
 
       let stdout = '';
       let stderr = '';
@@ -980,11 +1019,17 @@ class AmazonQMCPServer {
         stderr += data.toString();
       });
 
+      const cleanup = () => {
+        this.activeProcesses.delete(child);
+      };
+
       child.on('error', (error) => {
+        cleanup();
         reject(new Error(`Failed to execute Q CLI: ${error.message}`));
       });
 
       child.on('close', (code) => {
+        cleanup();
         if (code === 0) {
           resolve({ stdout, stderr });
         } else {
