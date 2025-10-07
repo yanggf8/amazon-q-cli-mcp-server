@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "amazon-q-cli": {
+      "command": "node",
+      "args": ["/home/yanggf/a/qclimcp/dist/server.js"],
+      "timeout": 30000,
+      "trust": false
+    }
+  }
+}
