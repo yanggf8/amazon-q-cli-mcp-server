@@ -1,63 +1,33 @@
 # Amazon Q CLI MCP Server
 
-This is a Model Context Protocol (MCP) server that wraps the Amazon Q CLI, allowing other MCP hosts (like Claude Desktop, VS Code with MCP extension, etc.) to interact with Amazon Q's capabilities.
+A Model Context Protocol (MCP) server that wraps the Amazon Q CLI, enabling MCP hosts (Claude Desktop, VS Code, etc.) to interact with Amazon Q's AI capabilities.
 
 ## Features
 
-The MCP server provides the following tools:
-
-- **ask_q**: Execute Amazon Q CLI with a prompt to get AI assistance
-- **take_q**: Execute Amazon Q CLI with a prompt to get AI assistance (alias for ask_q)
-- **q_translate**: Convert natural language to shell commands using Amazon Q
-- **q_status**: Check Amazon Q CLI installation and configuration status
-- **fetch_chunk**: Fetch a byte range from a URL (chunked HTTP fetch)
-
-### Session Management
-
-The server implements **automatic session persistence** using Amazon Q CLI's native `--resume` functionality:
-
-- **Session Isolation**: Each MCP connection gets its own conversation history
-- **Automatic Resume**: Conversations automatically continue across tool calls
-- **Directory Mapping**: Sessions are mapped to `~/.amazon-q-mcp/sessions/{sessionId}/`
-- **Zero Configuration**: Works seamlessly with any MCP client
-
-### Error Recovery
-
-The server implements **sophisticated error recovery patterns** with intelligent error handling:
-
-- **Granular Error Classification**: 7 distinct error types (Network, Authentication, Service Capacity, etc.)
-- **Exponential Backoff Retry**: Automatic retry for transient failures with jitter
-- **Context-Specific Guidance**: Actionable recovery instructions for each error type
-- **Comprehensive Diagnostics**: Built-in health checks and system status reporting
-- **Professional Error Formatting**: User-friendly error messages with technical details
-
-### Process Management
-
-The server implements **robust process lifecycle management** to ensure clean shutdown:
-
-- **Process Tracking**: All spawned Amazon Q CLI processes are tracked for proper cleanup
-- **Graceful Shutdown**: SIGTERM/SIGINT handlers terminate all child processes before exit
-- **Process Groups**: Child processes are created in detached groups for reliable termination
-- **Resource Cleanup**: Prevents orphaned `q_term` processes from persisting after server shutdown
+- **ask_q / take_q**: Chat with Amazon Q CLI for AI assistance
+- **q_translate**: Convert natural language to shell commands
+- **q_status**: Check Amazon Q CLI installation and configuration
+- **fetch_chunk**: Fetch byte ranges from HTTP URLs
+- **Session Management**: Automatic session persistence with conversation history
+- **Error Recovery**: Intelligent retry logic with exponential backoff
+- **Security**: Input validation, command whitelisting, and resource limits
 
 ## Prerequisites
 
-1. **Amazon Q CLI**: Make sure the Amazon Q CLI (`q`) is installed and accessible in your PATH
-2. **AWS Configuration**: Ensure AWS credentials are configured (via `aws configure` or environment variables)
-3. **Node.js**: Version 18 or higher
+- **Amazon Q CLI**: Install from [AWS documentation](https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/command-line-getting-started.html)
+- **AWS Credentials**: Configure via `aws configure` or environment variables
+- **Node.js**: Version 18 or higher
 
 ## Installation
 
-### Option 1: Install from npm (when published)
-
+### From npm (when published)
 ```bash
 npm install -g amazon-q-cli-mcp-server
 ```
 
-### Option 2: Build from source
-
+### From source
 ```bash
-git clone <this-repository>
+git clone <repository>
 cd amazon-q-cli-mcp-server
 npm install
 npm run build
@@ -65,9 +35,8 @@ npm run build
 
 ## Usage
 
-### With Claude Desktop
-
-Add the following to your Claude Desktop MCP configuration file:
+### Claude Desktop
+Add to `claude_desktop_config.json`:
 
 **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
@@ -83,337 +52,127 @@ Add the following to your Claude Desktop MCP configuration file:
 }
 ```
 
-If you built from source, use the full path:
-
-```json
-{
-  "mcpServers": {
-    "amazon-q-cli": {
-      "command": "node",
-      "args": ["/path/to/amazon-q-cli-mcp-server/dist/server.js"]
-    }
-  }
-}
-```
-
-### With Claude Code CLI MCP Client
-
-If you're using the Claude Code CLI MCP client, you can install the server at user level:
-
+### Claude Code CLI
 ```bash
-# Build the server first
-npm install
 npm run build
-
-# Add to Claude Code CLI with user scope (available in all projects)
-claude mcp add -s user amazon-q-cli node /path/to/amazon-q-cli-mcp-server/dist/server.js
-
-# Verify installation
-claude mcp list
-claude mcp get amazon-q-cli
+claude mcp add -s user amazon-q-cli node /path/to/dist/server.js
 ```
-
-The `-s user` flag installs the server at user level, making it available across all your projects.
-
-### With Other MCP Hosts
-
-The server uses stdio transport, so it can be used with any MCP host that supports stdio. Configure it according to your host's documentation.
 
 ## Available Tools
 
-### ask_q
-
-Chat with Amazon Q CLI to get AI assistance.
+### ask_q / take_q
+Chat with Amazon Q CLI for AI assistance.
 
 **Parameters:**
-- `prompt` (required): The message to send to Amazon Q
+- `prompt` (required): Question or prompt for Amazon Q
 - `model` (optional): Model to use
-- `agent` (optional): Agent/context profile to use
+- `agent` (optional): Agent/context profile
 
 **Example:**
 ```json
 {
   "name": "ask_q",
   "arguments": {
-    "prompt": "How do I create an S3 bucket using AWS CLI?",
-    "model": "claude-4-sonnet",
-    "agent": "my-agent"
-  }
-}
-```
-
-### take_q
-
-Chat with Amazon Q CLI to get AI assistance (alias for ask_q).
-
-**Parameters:**
-- `prompt` (required): The message to send to Amazon Q
-- `model` (optional): Model to use
-- `agent` (optional): Agent/context profile to use
-
-**Example:**
-```json
-{
-  "name": "take_q",
-  "arguments": {
-    "prompt": "How do I create an S3 bucket using AWS CLI?",
-    "model": "claude-4-sonnet",
-    "agent": "my-agent"
+    "prompt": "How do I create an S3 bucket?",
+    "model": "claude-3-sonnet"
   }
 }
 ```
 
 ### q_translate
-
-Convert natural language to shell commands using Amazon Q.
+Convert natural language to shell commands.
 
 **Parameters:**
-- `task` (required): Natural language description of the task
+- `task` (required): Natural language description
 
 **Example:**
 ```json
 {
   "name": "q_translate",
   "arguments": {
-    "task": "find all Python files in the current directory"
+    "task": "find all Python files in current directory"
   }
 }
 ```
 
 ### q_status
-
-Check Amazon Q CLI installation and configuration status.
+Check Amazon Q CLI installation and configuration.
 
 **Parameters:** None
 
-**Example:**
-```json
-{
-  "name": "q_status",
-  "arguments": {}
-}
-```
-
 ### fetch_chunk
-
-Fetch a byte range from an HTTP(S) URL. Useful for incremental download or previewing large files. Returns base64-encoded data and metadata.
+Fetch byte ranges from HTTP URLs.
 
 **Parameters:**
-- `url` (required): Target HTTP/HTTPS URL
-- `start` (optional): Start byte offset (default 0)
-- `length` (optional): Number of bytes to fetch (default 65536, max 10MB)
-- `headers` (optional): Extra request headers as key-value map
+- `url` (required): HTTP/HTTPS URL
+- `start` (optional): Start byte offset (default: 0)
+- `length` (optional): Bytes to fetch (default: 65536, max: 10MB)
+- `headers` (optional): Request headers
 
-**Example:**
-```json
-{
-  "name": "fetch_chunk",
-  "arguments": {
-    "url": "https://example.com/bigfile.bin",
-    "start": 0,
-    "length": 65536
-  }
-}
-```
+## Security Features
 
-**Response shape (example):**
-```json
-{
-  "url": "https://example.com/bigfile.bin",
-  "ok": true,
-  "status": 206,
-  "contentType": "application/octet-stream",
-  "requested": { "start": 0, "end": 65535 },
-  "receivedBytes": 65536,
-  "contentRange": "bytes 0-65535/1234567",
-  "totalBytes": 1234567,
-  "encoding": "base64",
-  "dataBase64": "..."
-}
-```
+- **Input Validation**: Length limits and sanitization
+- **Command Whitelisting**: Only allowed Q CLI commands
+- **Resource Limits**: Timeouts and output size limits
+- **Path Protection**: Session ID sanitization prevents traversal
 
-## Configuration
+## Session Management
 
-The server automatically detects your AWS configuration and Amazon Q CLI installation. Make sure:
-
-1. Amazon Q CLI is installed and the `q` command is available in your PATH
-2. AWS credentials are configured (via `aws configure`, environment variables, or IAM roles)
-3. You have the necessary permissions to use Amazon Q
-
-## Development
-
-### Building
-
-```bash
-npm run build
-```
-
-### Development Mode
-
-```bash
-npm run dev
-```
-
-### Testing
-
-```bash
-npm test
-```
+- **Automatic Persistence**: Conversations continue across tool calls
+- **Session Isolation**: Each MCP connection gets unique history
+- **Directory Mapping**: Sessions stored in `~/.amazon-q-mcp/sessions/`
+- **Logging**: Comprehensive session-based logging
 
 ## Troubleshooting
 
-### Normal STDERR Messages
-
-When the MCP server starts, you'll see these messages in STDERR:
+### Normal Startup Messages
 ```
 [Amazon Q MCP] init Amazon Q CLI MCP Server
 [Amazon Q MCP] Amazon Q CLI MCP Server listening on stdio
 ```
+These are expected initialization messages.
 
-**These messages are completely normal and expected.** They are intentionally sent to STDERR to indicate the server initialization and startup without interfering with the MCP protocol communication on STDOUT.
+### Common Issues
 
-### "Q CLI exited with code 2" error
-
-If you encounter this error with the `ask_q` tool, it's likely due to how the prompt is being passed to the Q CLI. The server has been updated to use stdin for passing prompts instead of command line arguments, which resolves this issue.
-
-### "Q CLI not found" error
-
-Make sure the Amazon Q CLI is installed and accessible:
-
+**Q CLI not found:**
 ```bash
 which q
 q --version
 ```
 
-### AWS credentials not configured
-
-Configure your AWS credentials:
-
+**AWS credentials:**
 ```bash
 aws configure
-```
-
-Or set environment variables:
-
-```bash
-export AWS_ACCESS_KEY_ID=your-access-key
-export AWS_SECRET_ACCESS_KEY=your-secret-key
+# or set environment variables
+export AWS_ACCESS_KEY_ID=your-key
+export AWS_SECRET_ACCESS_KEY=your-secret
 export AWS_DEFAULT_REGION=us-west-2
 ```
 
-### Permission errors
+**Permissions:**
+Ensure AWS credentials have Amazon Q service permissions.
 
-Ensure your AWS credentials have the necessary permissions to use Amazon Q services.
+## Development
 
-## Session Logging
-
-The Amazon Q CLI MCP Server implements separated session-based logging to track each stdio server instance independently.
-
-### Log Structure
-
-```
-~/.amazon-q-mcp/logs/
-├── sessions/
-│   ├── amazon-q-1735689234-abc123.log    # Individual session logs
-│   ├── amazon-q-1735689235-def456.log    # Each Claude Code instance gets its own log
-│   └── amazon-q-1735689236-ghi789.log
-└── active-sessions.json                   # Registry of active sessions
-```
-
-### Features
-
-- **Separate Logs**: Each MCP server instance writes to its own log file
-- **Session Tracking**: Unique session IDs with timestamps and random components
-- **Claude Code Detection**: Automatically detects Claude Code instances via environment variables or parent process
-- **Structured JSON Logs**: Easy parsing and analysis with timestamps, session info, and metadata
-- **No stderr Interference**: Pure file-based logging that doesn't interfere with MCP protocol communication
-- **Automatic Cleanup**: Stale sessions are cleaned up automatically
-- **Log Rotation**: Files are rotated when they exceed 50MB
-
-### Session Information
-
-Each session tracks:
-- **Session ID**: Unique identifier (e.g., `amazon-q-1735689234-abc123`)
-- **Claude Instance**: Which Claude Code instance launched the server
-- **Process Info**: PID, project path, start time, status
-- **Activity Log**: All tool calls, errors, and server events
-
-### Viewing Logs
-
-Use the included log viewer:
 ```bash
-node scripts/view-logs.cjs
-```
-
-Or view logs manually:
-```bash
-# View all session logs
-ls ~/.amazon-q-mcp/logs/sessions/
-
-# Follow a specific session
-tail -f ~/.amazon-q-mcp/logs/sessions/amazon-q-SESSION_ID.log
-
-# View active sessions
-cat ~/.amazon-q-mcp/logs/active-sessions.json
-```
-
-### Log Entries
-
-Each log entry contains:
-```json
-{
-  "timestamp": "2025-08-31T15:07:49.062Z",
-  "sessionId": "amazon-q-meztrglh-8lc0",
-  "claudeInstance": "claude-9038",
-  "pid": 9045,
-  "type": "TOOL_CALL",
-  "message": "Tool 'q_status' called",
-  "metadata": {
-    "toolName": "q_status",
-    "argsPreview": {}
-  }
-}
+npm run build    # Build TypeScript
+npm run dev      # Watch mode
+npm test         # Run tests
+npm run test:all # Include integration tests
 ```
 
 ## Architecture
 
-This MCP server acts as a bridge between MCP hosts and the Amazon Q CLI:
-
 ```
 MCP Host (Claude Desktop, VS Code, etc.)
     ↓ (MCP Protocol)
-Amazon Q CLI MCP Server (with Session Logging)
-    ↓ (Process execution)
+Amazon Q CLI MCP Server
+    ↓ (Process execution with security)
 Amazon Q CLI (`q` command)
     ↓ (AWS API calls)
 Amazon Q Service
 ```
 
-The server:
-1. Receives MCP tool calls from the host
-2. Logs all activity to session-specific files
-3. Translates calls into appropriate `q` CLI commands
-4. Executes the commands and captures output
-5. Returns formatted responses back to the MCP host
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
 ## License
 
-This project is licensed under the Apache License 2.0 - see the LICENSE file for details.
-
-## Related Projects
-
-- [Amazon Q CLI](https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/command-line-getting-started.html)
-- [Model Context Protocol](https://modelcontextprotocol.io/)
-- [Gemini CLI MCP Implementation](https://github.com/google-gemini/gemini-cli) (inspiration for this project)
-
----
-
-*Last updated: August 2024*
+Apache License 2.0 - see LICENSE file for details.

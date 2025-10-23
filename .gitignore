@@ -32,14 +32,19 @@ build/
 ehthumbs.db
 Thumbs.db
 
-# Logs
+# Logs and session data
 logs/
 *.log
+.amazon-q-mcp/
 
-# Debug files
-debug-server.js
-debug-mcp-server.js
+# Test coverage
+coverage/
 
 # Temporary files
 *.tmp
 *.temp
+
+# Editor-specific directories
+.cursor/
+.claude/
+.gemini/

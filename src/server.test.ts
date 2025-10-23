@@ -87,11 +87,10 @@ describe('AmazonQMCPServer', () => {
   });
 
   describe('Tool Handlers', () => {
-    it('should validate q_chat parameters', async () => {
+    it('should validate ask_q parameters', async () => {
       const validArgs = {
-        message: 'Hello Amazon Q',
-        agent: 'default',
-        no_interactive: true,
+        prompt: 'Hello Amazon Q',
+        model: 'claude-3-sonnet',
       };
 
       // Mock successful execution
@@ -99,24 +98,25 @@ describe('AmazonQMCPServer', () => {
         stdout: { on: vi.fn((event, cb) => event === 'data' && cb('Response from Q')) },
         stderr: { on: vi.fn() },
         on: vi.fn((event, cb) => event === 'close' && cb(0)),
-        stdin: { end: vi.fn() },
+        stdin: { write: vi.fn(), end: vi.fn() },
+        pid: 12345
       };
       mockSpawn.mockReturnValue(mockChild as any);
 
-      const result = await (server as any).handleQChat(validArgs);
+      const result = await (server as any).handleAskQ(validArgs);
       
       expect(result.content).toHaveLength(1);
       expect(result.content[0].type).toBe('text');
-      expect(result.content[0].text).toContain('Amazon Q Response:');
+      expect(result.content[0].text).toBe('Response from Q');
     });
 
-    it('should reject invalid q_chat parameters', async () => {
+    it('should reject invalid ask_q parameters', async () => {
       const invalidArgs = {
-        // Missing required 'message' field
-        agent: 'default',
+        // Missing required 'prompt' field
+        model: 'claude-3-sonnet',
       };
 
-      await expect((server as any).handleQChat(invalidArgs)).rejects.toThrow();
+      await expect((server as any).handleAskQ(invalidArgs)).rejects.toThrow();
     });
 
     it('should handle q_translate', async () => {
@@ -129,7 +129,8 @@ describe('AmazonQMCPServer', () => {
         stdout: { on: vi.fn((event, cb) => event === 'data' && cb('ls -la')) },
         stderr: { on: vi.fn() },
         on: vi.fn((event, cb) => event === 'close' && cb(0)),
-        stdin: { end: vi.fn(), write: vi.fn() },
+        stdin: { write: vi.fn(), end: vi.fn() },
+        pid: 12345
       };
       mockSpawn.mockReturnValue(mockChild as any);
 
@@ -137,45 +138,15 @@ describe('AmazonQMCPServer', () => {
       
       expect(result.content).toHaveLength(1);
       expect(result.content[0].type).toBe('text');
-      expect(result.content[0].text).toContain('Natural Language Translation:');
+      expect(result.content[0].text).toContain('```bash\nls -la\n```');
     });
 
-    it('should handle q_get_help', async () => {
-      const validArgs = {
-        command: 'chat',
-      };
-
-      // Mock successful execution
-      const mockChild = {
-        stdout: { on: vi.fn((event, cb) => event === 'data' && cb('Help output')) },
-        stderr: { on: vi.fn() },
-        on: vi.fn((event, cb) => event === 'close' && cb(0)),
-        stdin: { end: vi.fn() },
-      };
-      mockSpawn.mockReturnValue(mockChild as any);
-
-      const result = await (server as any).handleQGetHelp(validArgs);
+    it('should handle q_status', async () => {
+      const result = await (server as any).handleQStatus({});
       
       expect(result.content).toHaveLength(1);
       expect(result.content[0].type).toBe('text');
-      expect(result.content[0].text).toContain('Amazon Q CLI Help:');
-    });
-
-    it('should handle q_check_status', async () => {
-      // Mock successful execution for version check
-      const mockChild = {
-        stdout: { on: vi.fn((event, cb) => event === 'data' && cb('q 1.13.1')) },
-        stderr: { on: vi.fn() },
-        on: vi.fn((event, cb) => event === 'close' && cb(0)),
-        stdin: { end: vi.fn() },
-      };
-      mockSpawn.mockReturnValue(mockChild as any);
-
-      const result = await (server as any).handleQCheckStatus();
-      
-      expect(result.content).toHaveLength(1);
-      expect(result.content[0].type).toBe('text');
-      expect(result.content[0].text).toContain('Amazon Q CLI Status:');
+      expect(result.content[0].text).toContain('Amazon Q CLI MCP Server Status');
     });
   });
 });

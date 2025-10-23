@@ -2,224 +2,151 @@
 
 ## Overview
 
-This project successfully implements a Model Context Protocol (MCP) server that wraps the Amazon Q CLI, allowing other MCP hosts (like Claude Desktop, VS Code with MCP extension, etc.) to interact with Amazon Q's capabilities.
+This project implements a Model Context Protocol (MCP) server that wraps the Amazon Q CLI, allowing MCP hosts (Claude Desktop, VS Code, etc.) to interact with Amazon Q's AI capabilities through a secure, well-tested interface.
 
-## What We Built
+## Architecture
 
-### Core MCP Server (`src/server.ts`)
-- **Full MCP Protocol Compliance**: Implements the MCP specification for tool discovery and execution
-- **Amazon Q CLI Integration**: Wraps the actual Amazon Q CLI commands with proper argument handling
-- **Error Handling**: Robust error handling with user-friendly error messages
-- **TypeScript Implementation**: Fully typed with proper validation using Zod schemas
+### Core Components
+
+**MCP Server (`src/server.ts`)**
+- Full MCP Protocol compliance with JSON-RPC 2.0
+- Amazon Q CLI integration with proper argument handling
+- Comprehensive error handling with user-friendly messages
+- TypeScript implementation with Zod validation schemas
+
+**Session Logger (`src/session-logger.ts`)**
+- Session-based logging with automatic cleanup
+- Process tracking and resource management
+- Comprehensive activity logging for debugging
 
 ### Available Tools
 
-1. **q_chat**: Start a chat session with Amazon Q CLI
-   - Parameters: message (required), agent, model, resume, trust_all_tools, no_interactive
-   - Supports all Amazon Q chat options including non-interactive mode
+1. **ask_q / take_q**: Chat interface to Amazon Q CLI
+   - Parameters: `prompt` (required), `model`, `agent`
+   - Supports conversation context and session persistence
 
-2. **q_translate**: Use Amazon Q to translate natural language to shell commands
-   - Parameters: query (required)
-   - Converts natural language descriptions to executable shell commands
+2. **q_translate**: Natural language to shell command translation
+   - Parameters: `task` (required)
+   - Converts descriptions to executable commands
 
-3. **q_doctor**: Debug Amazon Q CLI installation issues
+3. **q_status**: System status and configuration check
    - No parameters required
-   - Runs diagnostic checks on the Amazon Q CLI installation
+   - Reports server uptime and Q CLI status
 
-4. **q_get_help**: Get help information for Amazon Q CLI commands
-   - Parameters: command (optional), show_all (optional)
-   - Provides comprehensive help information
+4. **fetch_chunk**: HTTP byte range fetching utility
+   - Parameters: `url` (required), `start`, `length`, `headers`
+   - Useful for downloading specific parts of large files
 
-5. **q_check_status**: Check Amazon Q CLI installation and configuration status
-   - No parameters required
-   - Shows version info and runs doctor diagnostics
+## Security Features
 
-## Key Features
+### Input Validation & Sanitization
+- **Length Limits**: Prompts limited to 10,000 characters
+- **Session ID Sanitization**: Prevents path traversal attacks
+- **Command Whitelisting**: Only approved Q CLI commands allowed
+- **Parameter Validation**: Zod schemas ensure type safety
 
-### MCP Protocol Compliance
-- ✅ Proper JSON-RPC 2.0 implementation
-- ✅ Tool discovery via `tools/list`
-- ✅ Tool execution via `tools/call`
-- ✅ Structured input/output schemas
-- ✅ Error handling and validation
+### Resource Protection
+- **Timeouts**: 30-second limit on command execution
+- **Output Limits**: 1MB maximum output size per command
+- **Process Management**: Proper cleanup of child processes
+- **Memory Protection**: Prevents unbounded memory growth
 
-### Amazon Q CLI Integration
-- ✅ Supports all major Amazon Q CLI commands
-- ✅ Proper argument passing and validation
-- ✅ Non-interactive mode for automated usage
-- ✅ Captures both stdout and stderr
-- ✅ Handles command failures gracefully
+### Error Handling
+- **Classified Errors**: Structured error types with guidance
+- **Retry Logic**: Exponential backoff for transient failures
+- **User-Friendly Messages**: Clear error descriptions and actions
 
-### Development Quality
-- ✅ Comprehensive test suite (11 tests passing)
-- ✅ TypeScript with strict typing
-- ✅ Proper error handling and validation
-- ✅ Clean, maintainable code structure
-- ✅ Extensive documentation
+## Session Management
+
+### Features
+- **Automatic Persistence**: Conversations continue across tool calls
+- **Session Isolation**: Each MCP connection gets unique context
+- **Directory Structure**: `~/.amazon-q-mcp/sessions/{sessionId}/`
+- **Activity Logging**: Comprehensive session-based logs
+
+### Security
+- **Path Sanitization**: Session IDs cleaned to prevent traversal
+- **Resource Limits**: Automatic cleanup of old sessions
+- **Process Tracking**: All child processes properly managed
 
 ## Testing
 
 ### Test Coverage
-- **Unit Tests**: Mock-based tests for all tool handlers
-- **Integration Tests**: Real MCP protocol communication tests
-- **Protocol Compliance Tests**: Verify MCP specification adherence
+- **Unit Tests**: Core functionality and error handling
+- **Integration Tests**: MCP protocol compliance
+- **Mock Testing**: Child process execution simulation
+- **Security Tests**: Input validation and sanitization
 
 ### Test Results
 ```
-✓ src/server.test.ts (8 tests) 42ms
-✓ src/mcp-protocol.test.ts (3 tests) 1033ms
-
-Test Files  2 passed (2)
-Tests  11 passed (11)
+✓ src/server.test.ts (7 tests)
+✓ src/mcp-protocol.test.ts (3 tests)
+Test Files: 2 passed
+Tests: 10 passed
 ```
 
-## Manual Testing Results
+## Development Workflow
 
-### Successful Operations Verified
-1. **Server Startup**: ✅ Server starts correctly and listens on stdio
-2. **Tool Discovery**: ✅ Returns all 5 tools with proper schemas
-3. **Chat Functionality**: ✅ Successfully chats with Amazon Q
-4. **Help System**: ✅ Retrieves help information correctly
-5. **Status Checking**: ✅ Reports Q CLI version and health status
-
-### Example Working Commands
+### Build Process
 ```bash
-# Chat with Amazon Q
-q_chat: "What is Amazon S3?" → Detailed S3 explanation
-
-# Get help
-q_get_help: {} → Full Amazon Q CLI help output
-
-# Check status
-q_check_status: {} → Version info and diagnostic report
+npm run build    # TypeScript compilation
+npm run dev      # Watch mode for development
+npm test         # Run test suite
+npm run test:all # Include integration tests
 ```
 
-## Usage Examples
+### Code Quality
+- **TypeScript**: Full type safety with strict mode
+- **ESLint**: Code style and quality enforcement
+- **Vitest**: Modern testing framework
+- **Zod**: Runtime type validation
 
-### Claude Desktop Integration
-```json
-{
-  "mcpServers": {
-    "amazon-q-cli": {
-      "command": "amazon-q-mcp-server",
-      "args": []
-    }
-  }
-}
-```
+## Deployment
 
-### Direct MCP Protocol Usage
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "tools/call",
-  "params": {
-    "name": "q_chat",
-    "arguments": {
-      "message": "How do I optimize my Lambda function?",
-      "no_interactive": true
-    }
-  }
-}
-```
+### Prerequisites
+- Node.js 18+
+- Amazon Q CLI installed and configured
+- AWS credentials with Q service permissions
 
-## Architecture
+### Installation Options
+1. **NPM Package** (when published): `npm install -g amazon-q-cli-mcp-server`
+2. **From Source**: Clone, install, build, and configure PATH
 
-```
-MCP Host (Claude Desktop, VS Code, etc.)
-    ↓ (MCP Protocol over stdio)
-Amazon Q CLI MCP Server (Node.js/TypeScript)
-    ↓ (Process execution)
-Amazon Q CLI (`q` command)
-    ↓ (AWS API calls)
-Amazon Q Service
-```
+### Configuration
+- **Claude Desktop**: Add to `claude_desktop_config.json`
+- **Claude Code CLI**: Use `claude mcp add` command
+- **Other MCP Hosts**: Standard MCP server configuration
 
-## Project Structure
+## Performance Characteristics
 
-```
-/home/yanggf/a/qcli/
-├── src/
-│   ├── server.ts              # Main MCP server implementation
-│   ├── server.test.ts         # Unit tests
-│   ├── mcp-protocol.test.ts   # Protocol compliance tests
-│   └── integration.test.ts    # Integration tests
-├── dist/                      # Compiled JavaScript
-├── examples/                  # Usage examples
-├── package.json              # Dependencies and scripts
-├── tsconfig.json             # TypeScript configuration
-├── README.md                 # User documentation
-└── PROJECT_SUMMARY.md        # This file
-```
+### Resource Usage
+- **Memory**: Minimal baseline, bounded by output limits
+- **CPU**: Low overhead, mainly I/O bound
+- **Network**: Depends on Q CLI usage patterns
+- **Storage**: Session logs in `~/.amazon-q-mcp/`
 
-## Dependencies
-
-### Runtime Dependencies
-- `@modelcontextprotocol/sdk`: MCP protocol implementation
-- `zod`: Schema validation and parsing
-
-### Development Dependencies
-- `typescript`: TypeScript compiler
-- `vitest`: Testing framework
-- `@types/node`: Node.js type definitions
-
-## Installation & Usage
-
-### From Source
-```bash
-git clone <repository>
-cd amazon-q-cli-mcp-server
-npm install
-npm run build
-node dist/server.js
-```
-
-### As NPM Package (when published)
-```bash
-npm install -g amazon-q-cli-mcp-server
-amazon-q-mcp-server
-```
-
-## Comparison with Gemini CLI Implementation
-
-This implementation follows the same architectural patterns as the Gemini CLI MCP server:
-
-### Similarities
-- ✅ Uses `@modelcontextprotocol/sdk` for MCP protocol handling
-- ✅ Implements stdio transport for communication
-- ✅ Provides comprehensive tool discovery and execution
-- ✅ Includes proper error handling and validation
-- ✅ Uses TypeScript for type safety
-
-### Differences
-- **CLI Integration**: Wraps Amazon Q CLI instead of Gemini CLI
-- **Tool Set**: Provides Amazon Q-specific tools (chat, translate, doctor, etc.)
-- **Authentication**: Relies on Amazon Q CLI's built-in authentication
-- **Scope**: Focused specifically on Amazon Q functionality
+### Scalability
+- **Concurrent Sessions**: Supports multiple MCP connections
+- **Process Management**: Efficient child process handling
+- **Error Recovery**: Automatic retry with backoff
+- **Resource Cleanup**: Proper cleanup on shutdown
 
 ## Future Enhancements
 
 ### Potential Improvements
-1. **Streaming Support**: Add support for streaming responses from Amazon Q
-2. **Session Management**: Implement conversation session persistence
-3. **Advanced Configuration**: Add more configuration options for different use cases
-4. **Rich Content**: Support for images and other rich content types
-5. **Caching**: Implement response caching for better performance
+1. **Streaming Responses**: Real-time output for long operations
+2. **Advanced Caching**: Response caching for repeated queries
+3. **Plugin System**: Extensible tool architecture
+4. **Metrics Collection**: Usage analytics and performance monitoring
 
-### Additional Tools
-1. **q_settings**: Manage Amazon Q CLI settings
-2. **q_history**: Access conversation history
-3. **q_context**: Manage conversation context and agents
+### Maintenance
+- **Log Rotation**: Automatic cleanup of old session logs
+- **Health Monitoring**: Built-in diagnostics and status reporting
+- **Update Mechanism**: Graceful handling of Q CLI updates
 
-## Conclusion
+## License & Support
 
-This project successfully demonstrates how to create a robust MCP server wrapper for command-line tools. The implementation is:
-
-- **Production Ready**: Comprehensive error handling and testing
-- **Well Documented**: Extensive documentation and examples
-- **Extensible**: Clean architecture allows for easy additions
-- **Compliant**: Fully adheres to MCP protocol specifications
-- **Tested**: Comprehensive test suite ensures reliability
-
-The Amazon Q CLI MCP Server enables seamless integration of Amazon Q's AI capabilities into any MCP-compatible environment, making it easy for developers to leverage Amazon Q's knowledge and assistance in their workflows.
+- **License**: Apache License 2.0
+- **Documentation**: Comprehensive README and setup guides
+- **Troubleshooting**: Detailed error messages and guidance
+- **Community**: Open source with contribution guidelines

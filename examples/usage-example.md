@@ -1,242 +1,137 @@
-# Amazon Q CLI MCP Server Usage Examples
+# Amazon Q CLI MCP Server - Usage Examples
 
-This document provides examples of how to use the Amazon Q CLI MCP Server with different MCP hosts.
+This document provides practical examples of using the Amazon Q CLI MCP Server with various MCP hosts.
 
-## Claude Desktop Integration
+## Claude Desktop Examples
 
-### Configuration
+### Basic Q&A
+```
+Use ask_q to help me understand how to optimize a Python function for better performance
+```
 
-Add this to your Claude Desktop configuration file:
+### Command Translation
+```
+Use q_translate to convert: "find all JavaScript files modified in the last 7 days and count the lines of code"
+```
 
-**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-**Linux**: `~/.config/claude/claude_desktop_config.json`
+### System Status Check
+```
+Use q_status to check if Amazon Q CLI is properly configured and working
+```
 
+### Fetching Documentation
+```
+Use fetch_chunk to get the first 1000 bytes from https://docs.aws.amazon.com/amazonq/latest/api-reference/
+```
+
+## Tool Parameters
+
+### ask_q / take_q
 ```json
 {
-  "mcpServers": {
-    "amazon-q-cli": {
-      "command": "amazon-q-mcp-server",
-      "args": []
+  "name": "ask_q",
+  "arguments": {
+    "prompt": "How do I create a secure S3 bucket with encryption?",
+    "model": "claude-3-sonnet",
+    "agent": "aws-expert"
+  }
+}
+```
+
+### q_translate
+```json
+{
+  "name": "q_translate",
+  "arguments": {
+    "task": "compress all log files older than 30 days in /var/log"
+  }
+}
+```
+
+### q_status
+```json
+{
+  "name": "q_status",
+  "arguments": {}
+}
+```
+
+### fetch_chunk
+```json
+{
+  "name": "fetch_chunk",
+  "arguments": {
+    "url": "https://example.com/large-file.json",
+    "start": 0,
+    "length": 1024,
+    "headers": {
+      "Authorization": "Bearer token"
     }
   }
 }
 ```
 
-### Example Conversations
+## Common Use Cases
 
-Once configured, you can use Amazon Q CLI through Claude Desktop:
+### Code Review and Optimization
+1. Use `ask_q` to get code review suggestions
+2. Follow up with specific optimization questions
+3. Use `q_translate` to get shell commands for testing
 
-**Example 1: Getting Help**
+### Infrastructure Management
+1. Use `ask_q` for AWS best practices
+2. Use `q_translate` to convert requirements to CLI commands
+3. Use `q_status` to verify tool availability
+
+### Documentation and Learning
+1. Use `fetch_chunk` to get specific sections of documentation
+2. Use `ask_q` to explain complex concepts
+3. Use `q_translate` for practical command examples
+
+## Session Management
+
+The server automatically maintains conversation context:
+- Each Claude conversation gets a unique session
+- Follow-up questions maintain context
+- Sessions persist across multiple tool calls
+
+### Example Session Flow
 ```
-User: Can you help me understand what Amazon Q CLI can do?
-
-Claude: I'll check what Amazon Q CLI can do for you.
-
-[Uses q_get_help tool]
-
-Based on the Amazon Q CLI help, here's what it can do:
-- Interactive chat sessions for AWS-related questions
-- Code analysis and suggestions
-- Infrastructure recommendations
-- Best practices guidance
-- And more...
-```
-
-**Example 2: Checking AWS Configuration**
-```
-User: Can you check if my AWS credentials are properly configured?
-
-Claude: I'll check your AWS configuration and Amazon Q CLI status.
-
-[Uses q_check_status tool]
-
-Your Amazon Q CLI is installed and working. Here's your current AWS configuration:
-- AWS CLI version: 2.x.x
-- Current identity: arn:aws:iam::123456789012:user/your-username
-- Default region: us-east-1
+1. ask_q: "How do I set up a CI/CD pipeline?"
+2. ask_q: "What about security best practices for the pipeline you mentioned?"
+3. q_translate: "create a GitHub Actions workflow for the pipeline"
 ```
 
-**Example 3: Interactive Chat**
-```
-User: Ask Amazon Q how to create a secure S3 bucket with encryption
+## Error Handling
 
-Claude: I'll ask Amazon Q about creating a secure S3 bucket with encryption.
+The server provides detailed error information:
+- **Authentication errors**: Clear guidance on fixing AWS credentials
+- **Command errors**: Specific Q CLI troubleshooting steps  
+- **Validation errors**: Parameter format requirements
 
-[Uses q_chat tool with message: "How do I create a secure S3 bucket with encryption?"]
-
-Amazon Q recommends the following approach for creating a secure S3 bucket:
-
-1. Enable server-side encryption (SSE)
-2. Block public access
-3. Enable versioning
-4. Configure access logging
-5. Use bucket policies for fine-grained access control
-
-Here's an example AWS CLI command:
-```bash
-aws s3api create-bucket --bucket my-secure-bucket --region us-east-1
-aws s3api put-bucket-encryption --bucket my-secure-bucket --server-side-encryption-configuration ...
-```
-```
-
-## VS Code Integration
-
-If you're using VS Code with an MCP extension, you can configure it similarly:
-
+### Example Error Response
 ```json
 {
-  "mcp.servers": {
-    "amazon-q-cli": {
-      "command": "amazon-q-mcp-server",
-      "args": []
-    }
-  }
+  "content": [{
+    "type": "text",
+    "text": "❌ **Authentication failed with Amazon Q CLI**\n\n**Error Type:** AUTHENTICATION_ERROR\n**Retryable:** No\n\n**Recommended Actions:**\n• Run 'q status' to check authentication status\n• Try 'q login' to re-authenticate\n• Verify AWS credentials are properly configured"
+  }]
 }
 ```
 
-## Direct MCP Protocol Usage
+## Best Practices
 
-You can also interact with the server directly using the MCP protocol over stdio:
+### Effective Prompts
+- Be specific about your requirements
+- Provide context about your environment
+- Ask follow-up questions to refine answers
 
-### List Available Tools
+### Resource Management
+- The server automatically limits output size and execution time
+- Sessions are cleaned up automatically
+- Use `q_status` to monitor system health
 
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "tools/list",
-  "params": {}
-}
-```
-
-Response:
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "result": {
-    "tools": [
-      {
-        "name": "q_chat",
-        "description": "Start an interactive chat session with Amazon Q CLI",
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "message": {
-              "type": "string",
-              "description": "The message to send to Amazon Q"
-            },
-            "profile": {
-              "type": "string",
-              "description": "AWS profile to use (optional)"
-            },
-            "region": {
-              "type": "string",
-              "description": "AWS region to use (optional)"
-            }
-          },
-          "required": ["message"]
-        }
-      }
-      // ... other tools
-    ]
-  }
-}
-```
-
-### Call a Tool
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 2,
-  "method": "tools/call",
-  "params": {
-    "name": "q_chat",
-    "arguments": {
-      "message": "How do I optimize my Lambda function for better performance?",
-      "region": "us-west-2"
-    }
-  }
-}
-```
-
-Response:
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 2,
-  "result": {
-    "content": [
-      {
-        "type": "text",
-        "text": "Amazon Q Response:\n\nTo optimize your Lambda function for better performance:\n\n1. Right-size your memory allocation\n2. Minimize cold starts\n3. Use provisioned concurrency for consistent performance\n4. Optimize your code and dependencies\n5. Consider using Lambda layers for shared libraries\n..."
-      }
-    ]
-  }
-}
-```
-
-## Advanced Usage
-
-### Using Different AWS Profiles
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 3,
-  "method": "tools/call",
-  "params": {
-    "name": "q_chat",
-    "arguments": {
-      "message": "Show me my current EC2 instances",
-      "profile": "production",
-      "region": "eu-west-1"
-    }
-  }
-}
-```
-
-### Executing Specific Q CLI Commands
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 4,
-  "method": "tools/call",
-  "params": {
-    "name": "q_execute_command",
-    "arguments": {
-      "command": "help",
-      "args": ["chat", "--verbose"]
-    }
-  }
-}
-```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **"Q CLI not found" error**
-   - Ensure Amazon Q CLI is installed: `npm install -g @aws/amazon-q-cli`
-   - Verify it's in your PATH: `which q`
-
-2. **AWS credentials not configured**
-   - Run `aws configure` to set up credentials
-   - Or set environment variables: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
-
-3. **Permission errors**
-   - Ensure your AWS credentials have the necessary permissions for Amazon Q
-   - Check your IAM policies
-
-### Debug Mode
-
-To run the server with debug output:
-
-```bash
-DEBUG=1 node dist/server.js
-```
-
-This will provide additional logging to help diagnose issues.
+### Security Considerations
+- All inputs are validated and sanitized
+- Only whitelisted Q CLI commands are allowed
+- Session data is isolated and protected

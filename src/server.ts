@@ -297,7 +297,11 @@ class AmazonQMCPServer {
 
   private getSessionDirectory(sessionId?: string): string {
     const effectiveSessionId = sessionId || 'default';
-    const sessionDir = path.join(os.homedir(), '.amazon-q-mcp', 'sessions', effectiveSessionId);
+    
+    // Sanitize session ID to prevent path traversal
+    const sanitizedSessionId = this.sanitizeSessionId(effectiveSessionId);
+    
+    const sessionDir = path.join(os.homedir(), '.amazon-q-mcp', 'sessions', sanitizedSessionId);
     
     // Create directory if it doesn't exist
     if (!fs.existsSync(sessionDir)) {
@@ -306,6 +310,27 @@ class AmazonQMCPServer {
     }
     
     return sessionDir;
+  }
+
+  private sanitizeSessionId(sessionId: string): string {
+    // Remove any characters that could be used for path traversal
+    return sessionId.replace(/[^a-zA-Z0-9-_]/g, '').substring(0, 50);
+  }
+
+  private validateCommandArgs(args: string[]): void {
+    if (args.length === 0) return;
+    
+    // Validate against allowed commands
+    const allowedCommands = ['chat', 'translate', 'status', 'doctor', '--version'];
+    if (!allowedCommands.includes(args[0])) {
+      throw new MCPError(
+        ErrorType.VALIDATION_ERROR,
+        'INVALID_COMMAND',
+        `Command not allowed: ${args[0]}`,
+        false,
+        this.errorGuidanceMap.get(ErrorType.VALIDATION_ERROR)
+      );
+    }
   }
 
   private getArgsPreview(args: any): any {
@@ -554,7 +579,7 @@ class AmazonQMCPServer {
   private async handleAskQ(args: any, sessionId?: string) {
     try {
       const schema = z.object({
-        prompt: z.string(),
+        prompt: z.string().min(1).max(10000), // Add length limits
         model: z.string().optional(),
         agent: z.string().optional(),
       });
@@ -914,23 +939,35 @@ class AmazonQMCPServer {
   }
 
   private async executeQCommand(args: string[]): Promise<{ stdout: string; stderr: string }> {
+    this.validateCommandArgs(args);
+    
     return new Promise((resolve, reject) => {
       const child = spawn('q', args, {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env },
-        detached: true
+        detached: true,
+        timeout: 30000 // 30 second timeout
       });
       this.activeProcesses.add(child);
 
       let stdout = '';
       let stderr = '';
+      const maxOutputSize = 1024 * 1024; // 1MB limit
 
       child.stdout.on('data', (data) => {
         stdout += data.toString();
+        if (stdout.length > maxOutputSize) {
+          child.kill();
+          reject(new Error('Output size limit exceeded'));
+        }
       });
 
       child.stderr.on('data', (data) => {
         stderr += data.toString();
+        if (stderr.length > maxOutputSize) {
+          child.kill();
+          reject(new Error('Error output size limit exceeded'));
+        }
       });
 
       const cleanup = () => {
@@ -954,69 +991,41 @@ class AmazonQMCPServer {
   }
 
   private async executeQCommandWithInput(args: string[], input: string): Promise<{ stdout: string; stderr: string }> {
-    return new Promise((resolve, reject) => {
-      const child = spawn('q', args, {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env },
-        detached: true
-      });
-      this.activeProcesses.add(child);
-
-      let stdout = '';
-      let stderr = '';
-
-      child.stdout.on('data', (data) => {
-        stdout += data.toString();
-      });
-
-      child.stderr.on('data', (data) => {
-        stderr += data.toString();
-      });
-
-      const cleanup = () => {
-        this.activeProcesses.delete(child);
-      };
-
-      child.on('error', (error) => {
-        cleanup();
-        reject(new Error(`Failed to execute Q CLI: ${error.message}`));
-      });
-
-      child.on('close', (code) => {
-        cleanup();
-        if (code === 0) {
-          resolve({ stdout, stderr });
-        } else {
-          reject(new Error(`Q CLI exited with code ${code}: ${stderr}`));
-        }
-      });
-
-      // Write input to stdin and close it
-      child.stdin.write(input + '\n');
-      child.stdin.end();
-    });
+    return this.executeQCommandWithInputInDirectory(args, input, process.cwd());
   }
 
   private async executeQCommandWithInputInDirectory(args: string[], input: string, workingDir: string): Promise<{ stdout: string; stderr: string }> {
+    this.validateCommandArgs(args);
+    
     return new Promise((resolve, reject) => {
       const child = spawn('q', args, {
         stdio: ['pipe', 'pipe', 'pipe'],
-        cwd: workingDir, // Execute in session-specific directory
+        cwd: workingDir,
         env: { ...process.env },
-        detached: true // Create a process group
+        detached: true,
+        timeout: 30000 // 30 second timeout
       });
 
       this.activeProcesses.add(child);
 
       let stdout = '';
       let stderr = '';
+      const maxOutputSize = 1024 * 1024; // 1MB limit
 
       child.stdout.on('data', (data) => {
         stdout += data.toString();
+        if (stdout.length > maxOutputSize) {
+          child.kill();
+          reject(new Error('Output size limit exceeded'));
+        }
       });
 
       child.stderr.on('data', (data) => {
         stderr += data.toString();
+        if (stderr.length > maxOutputSize) {
+          child.kill();
+          reject(new Error('Error output size limit exceeded'));
+        }
       });
 
       const cleanup = () => {
@@ -1038,7 +1047,9 @@ class AmazonQMCPServer {
       });
 
       // Write input to stdin and close it
-      child.stdin.write(input + '\n');
+      if (input) {
+        child.stdin.write(input + '\n');
+      }
       child.stdin.end();
     });
   }

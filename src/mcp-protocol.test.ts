@@ -55,11 +55,9 @@ describe('MCP Protocol Compliance', () => {
 
     // Verify specific tools exist (updated to match our actual implementation)
     const toolNames = response.result.tools.map((tool: any) => tool.name);
-    expect(toolNames).toContain('q_chat');
+    expect(toolNames).toContain('ask_q');
     expect(toolNames).toContain('q_translate');
-    expect(toolNames).toContain('q_doctor');
-    expect(toolNames).toContain('q_get_help');
-    expect(toolNames).toContain('q_check_status');
+    expect(toolNames).toContain('q_status');
   });
 
   it('should handle invalid tool calls gracefully', async () => {
@@ -82,7 +80,7 @@ describe('MCP Protocol Compliance', () => {
     if (response.result) {
       expect(response.result).toHaveProperty('content');
       expect(Array.isArray(response.result.content)).toBe(true);
-      expect(response.result.content[0].text).toContain('Error executing');
+      expect(response.result.content[0].text).toContain('Unknown tool');
     } else if (response.error) {
       // This is also acceptable
       expect(response.error).toHaveProperty('message');
@@ -95,10 +93,10 @@ describe('MCP Protocol Compliance', () => {
       id: 3,
       method: 'tools/call',
       params: {
-        name: 'q_chat',
+        name: 'ask_q',
         arguments: {
-          // Missing required 'message' field
-          agent: 'default'
+          // Missing required 'prompt' field
+          model: 'claude-3-sonnet'
         }
       }
     };
@@ -112,7 +110,7 @@ describe('MCP Protocol Compliance', () => {
     if (response.result) {
       expect(response.result).toHaveProperty('content');
       expect(Array.isArray(response.result.content)).toBe(true);
-      expect(response.result.content[0].text).toContain('Error executing');
+      expect(response.result.content[0].text).toContain('Invalid parameters');
     } else if (response.error) {
       // This is also acceptable
       expect(response.error).toHaveProperty('message');
