@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "amazon-q-cli": {
+      "command": "amazon-q-mcp-server",
+      "args": [],
+      "transport": "stdio"
+    }
+  }
+}

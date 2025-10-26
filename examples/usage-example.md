@@ -2,7 +2,47 @@
 
 This document provides practical examples of using the Amazon Q CLI MCP Server with various MCP hosts.
 
-## Claude Desktop Examples
+## Configuration Examples
+
+### Claude Desktop
+```json
+{
+  "mcpServers": {
+    "amazon-q-cli": {
+      "command": "amazon-q-mcp-server",
+      "args": []
+    }
+  }
+}
+```
+
+### Rovo Dev CLI
+```json
+{
+  "mcpServers": {
+    "amazon-q-cli": {
+      "command": "amazon-q-mcp-server",
+      "args": [],
+      "transport": "stdio"
+    }
+  }
+}
+```
+
+### With Wrapper Script (for GLIBC conflicts)
+```json
+{
+  "mcpServers": {
+    "amazon-q-cli": {
+      "command": "/path/to/wrapper-script.sh",
+      "args": [],
+      "transport": "stdio"
+    }
+  }
+}
+```
+
+## Usage Examples
 
 ### Basic Q&A
 ```
@@ -88,36 +128,26 @@ Use fetch_chunk to get the first 1000 bytes from https://docs.aws.amazon.com/ama
 2. Use `ask_q` to explain complex concepts
 3. Use `q_translate` for practical command examples
 
-## Session Management
+## Troubleshooting
 
-The server automatically maintains conversation context:
-- Each Claude conversation gets a unique session
-- Follow-up questions maintain context
-- Sessions persist across multiple tool calls
-
-### Example Session Flow
+### Normal Startup Messages
 ```
-1. ask_q: "How do I set up a CI/CD pipeline?"
-2. ask_q: "What about security best practices for the pipeline you mentioned?"
-3. q_translate: "create a GitHub Actions workflow for the pipeline"
+[Amazon Q MCP] init Amazon Q CLI MCP Server
+[Amazon Q MCP] Amazon Q CLI MCP Server listening on stdio
 ```
 
-## Error Handling
-
-The server provides detailed error information:
-- **Authentication errors**: Clear guidance on fixing AWS credentials
-- **Command errors**: Specific Q CLI troubleshooting steps  
-- **Validation errors**: Parameter format requirements
-
-### Example Error Response
-```json
-{
-  "content": [{
-    "type": "text",
-    "text": "❌ **Authentication failed with Amazon Q CLI**\n\n**Error Type:** AUTHENTICATION_ERROR\n**Retryable:** No\n\n**Recommended Actions:**\n• Run 'q status' to check authentication status\n• Try 'q login' to re-authenticate\n• Verify AWS credentials are properly configured"
-  }]
-}
+### GLIBC Conflicts (Rovo Dev CLI)
+If you see GLIBC version errors, use the wrapper script:
+```bash
+#!/bin/bash
+unset LD_LIBRARY_PATH
+exec amazon-q-mcp-server "$@"
 ```
+
+### Authentication Issues
+1. Run `q --version` to check Q CLI installation
+2. Verify AWS credentials are configured
+3. Ensure Amazon Q permissions
 
 ## Best Practices
 
@@ -130,8 +160,3 @@ The server provides detailed error information:
 - The server automatically limits output size and execution time
 - Sessions are cleaned up automatically
 - Use `q_status` to monitor system health
-
-### Security Considerations
-- All inputs are validated and sanitized
-- Only whitelisted Q CLI commands are allowed
-- Session data is isolated and protected

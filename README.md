@@ -1,6 +1,6 @@
 # Amazon Q CLI MCP Server
 
-A Model Context Protocol (MCP) server that wraps the Amazon Q CLI, enabling MCP hosts (Claude Desktop, VS Code, etc.) to interact with Amazon Q's AI capabilities.
+A Model Context Protocol (MCP) server that wraps the Amazon Q CLI, enabling MCP hosts (Claude Desktop, VS Code, Rovo Dev CLI, etc.) to interact with Amazon Q's AI capabilities.
 
 ## Features
 
@@ -20,7 +20,7 @@ A Model Context Protocol (MCP) server that wraps the Amazon Q CLI, enabling MCP 
 
 ## Installation
 
-### From npm (when published)
+### From npm
 ```bash
 npm install -g amazon-q-cli-mcp-server
 ```
@@ -31,6 +31,7 @@ git clone <repository>
 cd amazon-q-cli-mcp-server
 npm install
 npm run build
+npm install -g .
 ```
 
 ## Usage
@@ -40,6 +41,7 @@ Add to `claude_desktop_config.json`:
 
 **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+**Linux**: `~/.config/Claude/claude_desktop_config.json`
 
 ```json
 {
@@ -52,10 +54,35 @@ Add to `claude_desktop_config.json`:
 }
 ```
 
+### Rovo Dev CLI
+Add to `~/.rovodev/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "amazon-q-cli": {
+      "command": "amazon-q-mcp-server",
+      "args": [],
+      "transport": "stdio"
+    }
+  }
+}
+```
+
+**Note**: If you encounter GLIBC version conflicts with Rovo Dev CLI, create a wrapper script:
+
+```bash
+#!/bin/bash
+# Clear LD_LIBRARY_PATH to avoid conflicts
+unset LD_LIBRARY_PATH
+exec amazon-q-mcp-server "$@"
+```
+
+Then use the wrapper script path in your configuration.
+
 ### Claude Code CLI
 ```bash
-npm run build
-claude mcp add -s user amazon-q-cli node /path/to/dist/server.js
+claude mcp add -s user amazon-q-cli amazon-q-mcp-server
 ```
 
 ## Available Tools
@@ -68,32 +95,11 @@ Chat with Amazon Q CLI for AI assistance.
 - `model` (optional): Model to use
 - `agent` (optional): Agent/context profile
 
-**Example:**
-```json
-{
-  "name": "ask_q",
-  "arguments": {
-    "prompt": "How do I create an S3 bucket?",
-    "model": "claude-3-sonnet"
-  }
-}
-```
-
 ### q_translate
 Convert natural language to shell commands.
 
 **Parameters:**
 - `task` (required): Natural language description
-
-**Example:**
-```json
-{
-  "name": "q_translate",
-  "arguments": {
-    "task": "find all Python files in current directory"
-  }
-}
-```
 
 ### q_status
 Check Amazon Q CLI installation and configuration.
@@ -109,20 +115,6 @@ Fetch byte ranges from HTTP URLs.
 - `length` (optional): Bytes to fetch (default: 65536, max: 10MB)
 - `headers` (optional): Request headers
 
-## Security Features
-
-- **Input Validation**: Length limits and sanitization
-- **Command Whitelisting**: Only allowed Q CLI commands
-- **Resource Limits**: Timeouts and output size limits
-- **Path Protection**: Session ID sanitization prevents traversal
-
-## Session Management
-
-- **Automatic Persistence**: Conversations continue across tool calls
-- **Session Isolation**: Each MCP connection gets unique history
-- **Directory Mapping**: Sessions stored in `~/.amazon-q-mcp/sessions/`
-- **Logging**: Comprehensive session-based logging
-
 ## Troubleshooting
 
 ### Normal Startup Messages
@@ -130,7 +122,6 @@ Fetch byte ranges from HTTP URLs.
 [Amazon Q MCP] init Amazon Q CLI MCP Server
 [Amazon Q MCP] Amazon Q CLI MCP Server listening on stdio
 ```
-These are expected initialization messages.
 
 ### Common Issues
 
@@ -149,8 +140,13 @@ export AWS_SECRET_ACCESS_KEY=your-secret
 export AWS_DEFAULT_REGION=us-west-2
 ```
 
-**Permissions:**
-Ensure AWS credentials have Amazon Q service permissions.
+**GLIBC version conflicts (Rovo Dev CLI):**
+Create a wrapper script that clears `LD_LIBRARY_PATH` before executing the server.
+
+**MCP server not starting:**
+- Check that the command path is correct
+- Verify Node.js is accessible
+- Ensure proper permissions on executable files
 
 ## Development
 
@@ -158,13 +154,12 @@ Ensure AWS credentials have Amazon Q service permissions.
 npm run build    # Build TypeScript
 npm run dev      # Watch mode
 npm test         # Run tests
-npm run test:all # Include integration tests
 ```
 
 ## Architecture
 
 ```
-MCP Host (Claude Desktop, VS Code, etc.)
+MCP Host (Claude Desktop, Rovo Dev CLI, etc.)
     ↓ (MCP Protocol)
 Amazon Q CLI MCP Server
     ↓ (Process execution with security)

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project implements a Model Context Protocol (MCP) server that wraps the Amazon Q CLI, allowing MCP hosts (Claude Desktop, VS Code, etc.) to interact with Amazon Q's AI capabilities through a secure, well-tested interface.
+This project implements a Model Context Protocol (MCP) server that wraps the Amazon Q CLI, allowing MCP hosts (Claude Desktop, Rovo Dev CLI, VS Code, etc.) to interact with Amazon Q's AI capabilities through a secure, well-tested interface.
 
 ## Architecture
 
@@ -56,6 +56,21 @@ This project implements a Model Context Protocol (MCP) server that wraps the Ama
 - **Retry Logic**: Exponential backoff for transient failures
 - **User-Friendly Messages**: Clear error descriptions and actions
 
+## Supported MCP Hosts
+
+### Claude Desktop
+- Standard MCP configuration
+- Cross-platform support (macOS, Windows, Linux)
+
+### Rovo Dev CLI
+- Full integration with transport specification
+- GLIBC conflict resolution with wrapper scripts
+- Signature-based server validation
+
+### Claude Code CLI
+- Command-line MCP server management
+- User and system-level configurations
+
 ## Session Management
 
 ### Features
@@ -69,38 +84,6 @@ This project implements a Model Context Protocol (MCP) server that wraps the Ama
 - **Resource Limits**: Automatic cleanup of old sessions
 - **Process Tracking**: All child processes properly managed
 
-## Testing
-
-### Test Coverage
-- **Unit Tests**: Core functionality and error handling
-- **Integration Tests**: MCP protocol compliance
-- **Mock Testing**: Child process execution simulation
-- **Security Tests**: Input validation and sanitization
-
-### Test Results
-```
-✓ src/server.test.ts (7 tests)
-✓ src/mcp-protocol.test.ts (3 tests)
-Test Files: 2 passed
-Tests: 10 passed
-```
-
-## Development Workflow
-
-### Build Process
-```bash
-npm run build    # TypeScript compilation
-npm run dev      # Watch mode for development
-npm test         # Run test suite
-npm run test:all # Include integration tests
-```
-
-### Code Quality
-- **TypeScript**: Full type safety with strict mode
-- **ESLint**: Code style and quality enforcement
-- **Vitest**: Modern testing framework
-- **Zod**: Runtime type validation
-
 ## Deployment
 
 ### Prerequisites
@@ -108,45 +91,83 @@ npm run test:all # Include integration tests
 - Amazon Q CLI installed and configured
 - AWS credentials with Q service permissions
 
-### Installation Options
-1. **NPM Package** (when published): `npm install -g amazon-q-cli-mcp-server`
-2. **From Source**: Clone, install, build, and configure PATH
+### Installation
+```bash
+npm install -g amazon-q-cli-mcp-server
+```
 
-### Configuration
-- **Claude Desktop**: Add to `claude_desktop_config.json`
-- **Claude Code CLI**: Use `claude mcp add` command
-- **Other MCP Hosts**: Standard MCP server configuration
+### Configuration Examples
 
-## Performance Characteristics
+**Claude Desktop:**
+```json
+{
+  "mcpServers": {
+    "amazon-q-cli": {
+      "command": "amazon-q-mcp-server",
+      "args": []
+    }
+  }
+}
+```
+
+**Rovo Dev CLI:**
+```json
+{
+  "mcpServers": {
+    "amazon-q-cli": {
+      "command": "amazon-q-mcp-server",
+      "args": [],
+      "transport": "stdio"
+    }
+  }
+}
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**GLIBC Conflicts (Rovo Dev CLI):**
+- Create wrapper script that clears `LD_LIBRARY_PATH`
+- Use wrapper script path in configuration
+
+**Authentication Issues:**
+- Verify Q CLI installation: `q --version`
+- Check AWS credentials configuration
+- Ensure Amazon Q service permissions
+
+**Startup Messages:**
+```
+[Amazon Q MCP] init Amazon Q CLI MCP Server
+[Amazon Q MCP] Amazon Q CLI MCP Server listening on stdio
+```
+
+## Development
+
+### Build Process
+```bash
+npm run build    # TypeScript compilation
+npm run dev      # Watch mode for development
+npm test         # Run test suite
+```
+
+### Code Quality
+- **TypeScript**: Full type safety with strict mode
+- **Zod**: Runtime type validation
+- **Vitest**: Modern testing framework
+
+## Performance
 
 ### Resource Usage
 - **Memory**: Minimal baseline, bounded by output limits
 - **CPU**: Low overhead, mainly I/O bound
-- **Network**: Depends on Q CLI usage patterns
 - **Storage**: Session logs in `~/.amazon-q-mcp/`
 
 ### Scalability
 - **Concurrent Sessions**: Supports multiple MCP connections
 - **Process Management**: Efficient child process handling
 - **Error Recovery**: Automatic retry with backoff
-- **Resource Cleanup**: Proper cleanup on shutdown
 
-## Future Enhancements
+## License
 
-### Potential Improvements
-1. **Streaming Responses**: Real-time output for long operations
-2. **Advanced Caching**: Response caching for repeated queries
-3. **Plugin System**: Extensible tool architecture
-4. **Metrics Collection**: Usage analytics and performance monitoring
-
-### Maintenance
-- **Log Rotation**: Automatic cleanup of old session logs
-- **Health Monitoring**: Built-in diagnostics and status reporting
-- **Update Mechanism**: Graceful handling of Q CLI updates
-
-## License & Support
-
-- **License**: Apache License 2.0
-- **Documentation**: Comprehensive README and setup guides
-- **Troubleshooting**: Detailed error messages and guidance
-- **Community**: Open source with contribution guidelines
+Apache License 2.0 - see LICENSE file for details.
