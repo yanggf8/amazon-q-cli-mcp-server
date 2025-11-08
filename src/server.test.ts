@@ -50,8 +50,8 @@ describe('AmazonQMCPServer', () => {
       mockSpawn.mockReturnValue(mockChild as any);
 
       // Test the private method through reflection
-      const result = await (server as any).executeQCommand(['--version']);
-      
+      const result = await (server as any).executeQCommandInDirectory(['--version'], process.cwd());
+
       expect(result.stdout).toBe('Amazon Q CLI version 1.0.0');
       expect(mockSpawn).toHaveBeenCalledWith('q', ['--version'], expect.any(Object));
     });
@@ -82,7 +82,7 @@ describe('AmazonQMCPServer', () => {
       mockSpawn.mockReturnValue(mockChild as any);
 
       // Test the private method through reflection
-      await expect((server as any).executeQCommand(['--invalid'])).rejects.toThrow();
+      await expect((server as any).executeQCommandInDirectory(['--invalid'], process.cwd())).rejects.toThrow();
     });
   });
 

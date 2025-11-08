@@ -26,7 +26,7 @@ describe('Amazon Q CLI MCP Server Integration', () => {
 
       serverProcess.stderr?.on('data', (data) => {
         const output = data.toString();
-        if (output.includes('Amazon Q CLI MCP Server running')) {
+        if (output.includes('Amazon Q CLI MCP Server listening') || output.includes('listening on stdio')) {
           serverReady = true;
           clearTimeout(timeout);
           resolve();
@@ -55,23 +55,23 @@ describe('Amazon Q CLI MCP Server Integration', () => {
     };
 
     const response = await sendMCPRequest(request);
-    
+
     expect(response).toHaveProperty('jsonrpc', '2.0');
     expect(response).toHaveProperty('id', 1);
     expect(response).toHaveProperty('result');
     expect(response.result).toHaveProperty('tools');
     expect(Array.isArray(response.result.tools)).toBe(true);
-    
-    // Check that all expected tools are present
+
+    // Check that all expected tools are present (updated to match actual implementation)
     const toolNames = response.result.tools.map((tool: any) => tool.name);
-    expect(toolNames).toContain('q_chat');
+    expect(toolNames).toContain('ask_q');
+    expect(toolNames).toContain('take_q');
     expect(toolNames).toContain('q_translate');
-    expect(toolNames).toContain('q_doctor');
-    expect(toolNames).toContain('q_get_help');
-    expect(toolNames).toContain('q_check_status');
+    expect(toolNames).toContain('fetch_chunk');
+    expect(toolNames).toContain('q_status');
   });
 
-  it('should handle q_get_help tool call', async () => {
+  it('should handle q_status tool call', async () => {
     if (!serverReady) {
       console.warn('Server not ready, skipping test');
       return;
@@ -82,29 +82,29 @@ describe('Amazon Q CLI MCP Server Integration', () => {
       id: 2,
       method: 'tools/call',
       params: {
-        name: 'q_get_help',
+        name: 'q_status',
         arguments: {}
       }
     };
 
     const response = await sendMCPRequest(request);
-    
+
     expect(response).toHaveProperty('jsonrpc', '2.0');
     expect(response).toHaveProperty('id', 2);
-    
-    // Should return content with help information
+
+    // Should return content with status information
     if (response.result) {
       expect(response.result).toHaveProperty('content');
       expect(Array.isArray(response.result.content)).toBe(true);
       expect(response.result.content[0]).toHaveProperty('type', 'text');
-      expect(response.result.content[0].text).toContain('Amazon Q CLI Help');
+      expect(response.result.content[0].text).toContain('Amazon Q CLI MCP Server Status');
     } else if (response.error) {
-      // This might happen if Q CLI has issues, which is acceptable for testing
+      // This might happen if there are issues, which is acceptable for testing
       expect(response.error).toHaveProperty('message');
     }
   });
 
-  it('should handle q_check_status tool call', async () => {
+  it('should handle fetch_chunk tool call', async () => {
     if (!serverReady) {
       console.warn('Server not ready, skipping test');
       return;
@@ -115,41 +115,53 @@ describe('Amazon Q CLI MCP Server Integration', () => {
       id: 3,
       method: 'tools/call',
       params: {
-        name: 'q_check_status',
-        arguments: {}
+        name: 'fetch_chunk',
+        arguments: {
+          url: 'https://httpbin.org/bytes/100',
+          start: 0,
+          length: 100
+        }
       }
     };
 
-    const response = await sendMCPRequest(request);
-    
+    const response = await sendMCPRequest(request, 15000);
+
     expect(response).toHaveProperty('jsonrpc', '2.0');
     expect(response).toHaveProperty('id', 3);
-    
-    // Should always return content, even if there are issues
+
+    // Should return content with fetched data
     if (response.result) {
       expect(response.result).toHaveProperty('content');
       expect(Array.isArray(response.result.content)).toBe(true);
       expect(response.result.content[0]).toHaveProperty('type', 'text');
-      expect(response.result.content[0].text).toContain('Amazon Q CLI Status');
+
+      // Parse the response to verify structure
+      const resultText = response.result.content[0].text;
+      if (!resultText.includes('Error')) {
+        const parsedResult = JSON.parse(resultText);
+        expect(parsedResult).toHaveProperty('url');
+        expect(parsedResult).toHaveProperty('status');
+        expect(parsedResult).toHaveProperty('dataBase64');
+      }
     } else if (response.error) {
-      // This might happen if there are issues, which is acceptable
+      // Network errors are acceptable in test environment
       expect(response.error).toHaveProperty('message');
     }
   });
 
-  async function sendMCPRequest(request: any): Promise<any> {
+  async function sendMCPRequest(request: any, timeoutMs: number = 8000): Promise<any> {
     return new Promise((resolve, reject) => {
       let responseBuffer = '';
       let responseReceived = false;
-      
+
       const onData = (data: Buffer) => {
         if (responseReceived) return;
-        
+
         responseBuffer += data.toString();
-        
+
         // Try to parse each complete line as JSON
         const lines = responseBuffer.split('\n');
-        
+
         for (let i = 0; i < lines.length - 1; i++) {
           const line = lines[i].trim();
           if (line) {
@@ -166,24 +178,24 @@ describe('Amazon Q CLI MCP Server Integration', () => {
             }
           }
         }
-        
+
         // Keep the last incomplete line in buffer
         responseBuffer = lines[lines.length - 1];
       };
 
       serverProcess.stdout?.on('data', onData);
-      
+
       // Send request
       const requestStr = JSON.stringify(request) + '\n';
       serverProcess.stdin?.write(requestStr);
-      
-      // Timeout after 8 seconds
+
+      // Timeout
       setTimeout(() => {
         if (!responseReceived) {
           serverProcess.stdout?.off('data', onData);
           reject(new Error(`Request timeout for ${request.method} (id: ${request.id})`));
         }
-      }, 8000);
+      }, timeoutMs);
     });
   }
 });

@@ -56,7 +56,9 @@ describe('MCP Protocol Compliance', () => {
     // Verify specific tools exist (updated to match our actual implementation)
     const toolNames = response.result.tools.map((tool: any) => tool.name);
     expect(toolNames).toContain('ask_q');
+    expect(toolNames).toContain('take_q');
     expect(toolNames).toContain('q_translate');
+    expect(toolNames).toContain('fetch_chunk');
     expect(toolNames).toContain('q_status');
   });
 

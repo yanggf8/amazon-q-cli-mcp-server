@@ -2,7 +2,7 @@
 
 /**
  * Amazon Q CLI MCP Server
- * 
+ *
  * Simple, focused tools that directly leverage Amazon Q CLI capabilities
  * with session-based logging and enhanced error recovery
  */
@@ -20,6 +20,15 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { AmazonQSessionLogger } from './session-logger.js';
+import {
+  CONFIG,
+  ALLOWED_Q_COMMANDS,
+  ALLOWED_HTTP_HEADERS,
+  ALLOWED_URL_SCHEMES,
+  SERVER_INFO,
+  TOOL_NAMES,
+  LOG_TYPES
+} from './constants.js';
 
 // Enhanced Error Classification System
 enum ErrorType {
@@ -38,6 +47,9 @@ interface ErrorGuidance {
   retryable: boolean;
 }
 
+/**
+ * Custom error class for MCP operations with enhanced error classification
+ */
 class MCPError extends Error {
   constructor(
     public type: ErrorType,
@@ -51,27 +63,31 @@ class MCPError extends Error {
   }
 }
 
+/**
+ * Main MCP Server class for Amazon Q CLI integration
+ */
 class AmazonQMCPServer {
   private server: Server;
   private startTime: Date;
   private sessionLogger: AmazonQSessionLogger;
   private errorGuidanceMap!: Map<ErrorType, ErrorGuidance>;
   private activeProcesses: Set<ChildProcess> = new Set();
+  private diagnosticsCache?: { result: any; timestamp: number };
 
   constructor() {
     this.startTime = new Date();
-    
+
     // Initialize session logger first
     this.sessionLogger = new AmazonQSessionLogger(process.cwd());
-    this.sessionLogger.logActivity('SERVER_INIT', 'Initializing Amazon Q MCP Server');
-    
+    this.sessionLogger.logActivity(LOG_TYPES.SERVER_INIT, 'Initializing Amazon Q MCP Server');
+
     // Initialize error handling system
     this.initializeErrorGuidance();
-    
+
     this.server = new Server(
       {
-        name: 'amazon-q-cli-mcp-server',
-        version: '1.0.0',
+        name: SERVER_INFO.NAME,
+        version: SERVER_INFO.VERSION,
       },
       {
         capabilities: {
@@ -81,19 +97,25 @@ class AmazonQMCPServer {
     );
   }
 
+  /**
+   * Initialize the MCP server and setup handlers
+   */
   private async initialize(): Promise<void> {
     console.error('[Amazon Q MCP] init Amazon Q CLI MCP Server');
-    
+
     this.setupToolHandlers();
     this.setupErrorHandling();
-    
-    this.sessionLogger.logActivity('SERVER_READY', 'Amazon Q MCP Server initialized successfully');
+
+    this.sessionLogger.logActivity(LOG_TYPES.SERVER_READY, 'Amazon Q MCP Server initialized successfully');
     this.sessionLogger.updateStatus('ready');
   }
 
+  /**
+   * Setup error handling and cleanup handlers for process signals
+   */
   private setupErrorHandling(): void {
     this.server.onerror = (error) => {
-      this.sessionLogger.logActivity('MCP_ERROR', 'MCP server error occurred', {
+      this.sessionLogger.logActivity(LOG_TYPES.MCP_ERROR, 'MCP server error occurred', {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined
       });
@@ -101,17 +123,18 @@ class AmazonQMCPServer {
     };
 
     const cleanupAndExit = async (signal: string) => {
-      this.sessionLogger.logActivity('SHUTDOWN', `Received ${signal} signal`);
+      this.sessionLogger.logActivity(LOG_TYPES.SHUTDOWN, `Received ${signal} signal`);
       this.sessionLogger.updateStatus('shutdown');
 
       console.error(`[Amazon Q MCP] Shutting down. Cleaning up ${this.activeProcesses.size} active processes...`);
       for (const child of this.activeProcesses) {
         try {
-          // Kill the entire process group
-          process.kill(-child.pid!);
-          this.sessionLogger.logActivity('CLEANUP', `Terminated process group ${child.pid}`);
+          this.killProcessCrossPlatform(child);
+          this.sessionLogger.logActivity(LOG_TYPES.CLEANUP, `Terminated process ${child.pid}`);
         } catch (e) {
-          this.sessionLogger.logActivity('CLEANUP_ERROR', `Failed to terminate process group ${child.pid}`, { error: e instanceof Error ? e.message : String(e) });
+          const errorMsg = e instanceof Error ? e.message : String(e);
+          this.sessionLogger.logActivity(LOG_TYPES.CLEANUP_ERROR, `Failed to terminate process ${child.pid}`, { error: errorMsg });
+          console.error('[CLEANUP ERROR]', errorMsg);
         }
       }
       this.activeProcesses.clear();
@@ -124,16 +147,52 @@ class AmazonQMCPServer {
     process.on('SIGTERM', () => cleanupAndExit('SIGTERM'));
   }
 
+  /**
+   * Kill a child process in a cross-platform compatible way
+   * @param child - The child process to terminate
+   */
+  private killProcessCrossPlatform(child: ChildProcess): void {
+    if (!child.pid) {
+      return;
+    }
+
+    try {
+      if (process.platform === 'win32') {
+        // Windows: use taskkill to kill process tree
+        spawn('taskkill', ['/pid', child.pid.toString(), '/T', '/F']);
+      } else {
+        // Unix-like: kill the entire process group
+        try {
+          process.kill(-child.pid);
+        } catch (e) {
+          // If process group kill fails, try regular kill
+          child.kill('SIGTERM');
+        }
+      }
+    } catch (e) {
+      // Fallback: try to kill just the process
+      try {
+        child.kill('SIGTERM');
+      } catch (fallbackError) {
+        // Process might already be dead
+        console.error(`[WARN] Could not kill process ${child.pid}`);
+      }
+    }
+  }
+
+  /**
+   * Setup MCP protocol tool handlers
+   */
   private setupToolHandlers(): void {
     this.server.setRequestHandler(InitializeRequestSchema, async (request) => {
       return {
-        protocolVersion: '2024-11-05',
+        protocolVersion: SERVER_INFO.PROTOCOL_VERSION,
         capabilities: {
           tools: {},
         },
         serverInfo: {
-          name: 'amazon-q-cli-mcp-server',
-          version: '1.0.0',
+          name: SERVER_INFO.NAME,
+          version: SERVER_INFO.VERSION,
         },
       };
     });
@@ -142,7 +201,7 @@ class AmazonQMCPServer {
       return {
         tools: [
           {
-            name: 'ask_q',
+            name: TOOL_NAMES.ASK_Q,
             description: 'Execute Amazon Q CLI with a prompt to get AI assistance',
             inputSchema: {
               type: 'object',
@@ -164,7 +223,7 @@ class AmazonQMCPServer {
             },
           },
           {
-            name: 'take_q',
+            name: TOOL_NAMES.TAKE_Q,
             description: 'Execute Amazon Q CLI with a prompt to get AI assistance (alias for ask_q)',
             inputSchema: {
               type: 'object',
@@ -186,7 +245,7 @@ class AmazonQMCPServer {
             },
           },
           {
-            name: 'q_translate',
+            name: TOOL_NAMES.Q_TRANSLATE,
             description: 'Convert natural language to shell commands using Amazon Q',
             inputSchema: {
               type: 'object',
@@ -200,7 +259,7 @@ class AmazonQMCPServer {
             },
           },
           {
-            name: 'fetch_chunk',
+            name: TOOL_NAMES.FETCH_CHUNK,
             description: 'Fetch a byte range from a URL (chunked HTTP fetch)',
             inputSchema: {
               type: 'object',
@@ -215,18 +274,18 @@ class AmazonQMCPServer {
                 },
                 length: {
                   type: 'number',
-                  description: 'Number of bytes to fetch (default 65536)',
+                  description: `Number of bytes to fetch (default ${CONFIG.DEFAULT_FETCH_SIZE_BYTES})`,
                 },
                 headers: {
                   type: 'object',
-                  description: 'Optional request headers',
+                  description: 'Optional request headers (only safe headers allowed)',
                 },
               },
               required: ['url'],
             },
           },
           {
-            name: 'q_status',
+            name: TOOL_NAMES.Q_STATUS,
             description: 'Check Amazon Q CLI installation and configuration status',
             inputSchema: {
               type: 'object',
@@ -243,7 +302,7 @@ class AmazonQMCPServer {
 
       console.error(`[${requestId || 'unknown'}] Tool: ${name}, Session: ${sessionId || 'none'}`);
 
-      this.sessionLogger.logActivity('TOOL_CALL', `Tool '${name}' called`, {
+      this.sessionLogger.logActivity(LOG_TYPES.TOOL_CALL, `Tool '${name}' called`, {
         toolName: name,
         argsPreview: this.getArgsPreview(args),
         sessionId: sessionId || 'none',
@@ -253,41 +312,41 @@ class AmazonQMCPServer {
       try {
         let result;
         switch (name) {
-          case 'ask_q':
-          case 'take_q':
+          case TOOL_NAMES.ASK_Q:
+          case TOOL_NAMES.TAKE_Q:
             result = await this.handleAskQ(args, sessionId);
             break;
-          case 'q_translate':
+          case TOOL_NAMES.Q_TRANSLATE:
             result = await this.handleQTranslate(args, sessionId);
             break;
-          case 'fetch_chunk':
+          case TOOL_NAMES.FETCH_CHUNK:
             result = await this.handleFetchChunk(args);
             break;
-          case 'q_status':
+          case TOOL_NAMES.Q_STATUS:
             result = await this.handleQStatus(args);
             break;
           default:
             throw new Error(`Unknown tool: ${name}`);
         }
 
-        this.sessionLogger.logActivity('TOOL_SUCCESS', `Tool '${name}' completed successfully`);
+        this.sessionLogger.logActivity(LOG_TYPES.TOOL_SUCCESS, `Tool '${name}' completed successfully`);
         return result;
       } catch (error) {
         console.error(`[${requestId || 'unknown'}] Error in ${name}:`, error);
-        
-        this.sessionLogger.logActivity('TOOL_ERROR', `Tool '${name}' failed`, {
+
+        this.sessionLogger.logActivity(LOG_TYPES.TOOL_ERROR, `Tool '${name}' failed`, {
           toolName: name,
           error: error instanceof Error ? error.message : String(error),
           stack: error instanceof Error ? error.stack : undefined,
           sessionId: sessionId || 'none',
           requestId: requestId || 'unknown'
         });
-        
+
         // If it's already a classified MCPError, format it properly
         if (error instanceof MCPError) {
           return this.formatErrorResponse(error, String(requestId));
         }
-        
+
         // Otherwise, classify and format the error
         const classifiedError = this.classifyError(error, name);
         return this.formatErrorResponse(classifiedError, String(requestId));
@@ -295,34 +354,48 @@ class AmazonQMCPServer {
     });
   }
 
+  /**
+   * Get session directory for a given session ID
+   * @param sessionId - Optional session identifier
+   * @returns Path to session directory
+   */
   private getSessionDirectory(sessionId?: string): string {
     const effectiveSessionId = sessionId || 'default';
-    
+
     // Sanitize session ID to prevent path traversal
     const sanitizedSessionId = this.sanitizeSessionId(effectiveSessionId);
-    
+
     const sessionDir = path.join(os.homedir(), '.amazon-q-mcp', 'sessions', sanitizedSessionId);
-    
+
     // Create directory if it doesn't exist
     if (!fs.existsSync(sessionDir)) {
       fs.mkdirSync(sessionDir, { recursive: true });
       console.error(`[INFO] Created session directory: ${sessionDir}`);
     }
-    
+
     return sessionDir;
   }
 
+  /**
+   * Sanitize session ID to prevent path traversal attacks
+   * @param sessionId - Raw session ID
+   * @returns Sanitized session ID
+   */
   private sanitizeSessionId(sessionId: string): string {
     // Remove any characters that could be used for path traversal
-    return sessionId.replace(/[^a-zA-Z0-9-_]/g, '').substring(0, 50);
+    return sessionId.replace(/[^a-zA-Z0-9-_]/g, '').substring(0, CONFIG.SESSION_ID_MAX_LENGTH);
   }
 
+  /**
+   * Validate Q CLI command arguments against whitelist
+   * @param args - Command arguments to validate
+   * @throws {MCPError} If command is not in whitelist
+   */
   private validateCommandArgs(args: string[]): void {
     if (args.length === 0) return;
-    
+
     // Validate against allowed commands
-    const allowedCommands = ['chat', 'translate', 'status', 'doctor', '--version'];
-    if (!allowedCommands.includes(args[0])) {
+    if (!ALLOWED_Q_COMMANDS.includes(args[0] as any)) {
       throw new MCPError(
         ErrorType.VALIDATION_ERROR,
         'INVALID_COMMAND',
@@ -333,6 +406,11 @@ class AmazonQMCPServer {
     }
   }
 
+  /**
+   * Create a safe preview of arguments for logging (redact sensitive data)
+   * @param args - Arguments to preview
+   * @returns Sanitized preview object
+   */
   private getArgsPreview(args: any): any {
     // Create a safe preview of arguments for logging (truncate long values)
     if (!args || typeof args !== 'object') {
@@ -352,6 +430,9 @@ class AmazonQMCPServer {
     return preview;
   }
 
+  /**
+   * Initialize error guidance map with user-friendly error messages
+   */
   private initializeErrorGuidance(): void {
     this.errorGuidanceMap = new Map<ErrorType, ErrorGuidance>([
       [ErrorType.AUTHENTICATION_ERROR, {
@@ -415,12 +496,18 @@ class AmazonQMCPServer {
     ]);
   }
 
+  /**
+   * Classify an error into appropriate error type with guidance
+   * @param error - Error to classify
+   * @param context - Context where error occurred
+   * @returns Classified MCPError
+   */
   private classifyError(error: any, context: string): MCPError {
     const errorMessage = error?.message || String(error);
     const stderr = error?.stderr || '';
-    
+
     // Authentication errors
-    if (errorMessage.includes('AccessDeniedException') || 
+    if (errorMessage.includes('AccessDeniedException') ||
         errorMessage.includes('UnauthorizedOperation') ||
         errorMessage.includes('authentication') ||
         stderr.includes('login required')) {
@@ -432,7 +519,7 @@ class AmazonQMCPServer {
         this.errorGuidanceMap.get(ErrorType.AUTHENTICATION_ERROR)
       );
     }
-    
+
     // Service capacity errors
     if (errorMessage.includes('trouble responding right now') ||
         errorMessage.includes('capacity') ||
@@ -446,7 +533,7 @@ class AmazonQMCPServer {
         this.errorGuidanceMap.get(ErrorType.SERVICE_CAPACITY_ERROR)
       );
     }
-    
+
     // Network errors
     if (errorMessage.includes('ECONNREFUSED') ||
         errorMessage.includes('ETIMEDOUT') ||
@@ -461,7 +548,7 @@ class AmazonQMCPServer {
         this.errorGuidanceMap.get(ErrorType.NETWORK_ERROR)
       );
     }
-    
+
     // Q CLI not found
     if (errorMessage.includes('Failed to execute Q CLI') ||
         errorMessage.includes('ENOENT') ||
@@ -474,7 +561,7 @@ class AmazonQMCPServer {
         this.errorGuidanceMap.get(ErrorType.Q_CLI_NOT_FOUND)
       );
     }
-    
+
     // Configuration errors
     if (errorMessage.includes('configuration') ||
         errorMessage.includes('config') ||
@@ -487,7 +574,7 @@ class AmazonQMCPServer {
         this.errorGuidanceMap.get(ErrorType.CONFIGURATION_ERROR)
       );
     }
-    
+
     // Default to unknown error
     return new MCPError(
       ErrorType.UNKNOWN_ERROR,
@@ -506,49 +593,63 @@ class AmazonQMCPServer {
     );
   }
 
+  /**
+   * Execute an operation with exponential backoff retry logic
+   * @param operation - Async operation to execute
+   * @param context - Context for logging
+   * @param maxRetries - Maximum number of retry attempts
+   * @returns Result of the operation
+   */
   private async executeWithRetry<T>(
     operation: () => Promise<T>,
     context: string,
-    maxRetries: number = 3
+    maxRetries: number = CONFIG.MAX_RETRIES
   ): Promise<T> {
     let lastError: any;
-    
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         return await operation();
       } catch (error) {
         lastError = error;
         const classifiedError = this.classifyError(error, context);
-        
+
         console.error(`[${context}] Attempt ${attempt} failed:`, classifiedError.type, classifiedError.message);
-        
+
         // Log the retry attempt
-        this.sessionLogger.logActivity('RETRY_ATTEMPT', `${context} retry attempt ${attempt}/${maxRetries}`, {
+        this.sessionLogger.logActivity(LOG_TYPES.RETRY_ATTEMPT, `${context} retry attempt ${attempt}/${maxRetries}`, {
           errorType: classifiedError.type,
           errorMessage: classifiedError.message,
           retryable: classifiedError.retryable
         });
-        
+
         // Don't retry if error is not retryable or we've reached max attempts
         if (!classifiedError.retryable || attempt === maxRetries) {
           throw classifiedError;
         }
-        
+
         // Calculate delay with exponential backoff
-        const baseDelay = 500; // 500ms
-        const maxDelay = 10000; // 10 seconds
-        const delay = Math.min(baseDelay * Math.pow(2, attempt - 1), maxDelay);
-        const jitter = Math.random() * 0.25 * delay; // 25% jitter
+        const delay = Math.min(
+          CONFIG.RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1),
+          CONFIG.RETRY_MAX_DELAY_MS
+        );
+        const jitter = Math.random() * CONFIG.RETRY_JITTER_FACTOR * delay;
         const finalDelay = delay + jitter;
-        
+
         console.error(`[${context}] Retrying in ${Math.round(finalDelay)}ms... (attempt ${attempt + 1}/${maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, finalDelay));
       }
     }
-    
+
     throw lastError;
   }
 
+  /**
+   * Format an MCPError into a user-friendly response
+   * @param error - MCPError to format
+   * @param requestId - Request ID for tracking
+   * @returns Formatted error response
+   */
   private formatErrorResponse(error: MCPError, requestId?: string): any {
     const errorInfo = {
       type: error.type,
@@ -576,10 +677,16 @@ class AmazonQMCPServer {
     };
   }
 
+  /**
+   * Handle ask_q/take_q tool invocation
+   * @param args - Tool arguments
+   * @param sessionId - Optional session ID
+   * @returns Tool response
+   */
   private async handleAskQ(args: any, sessionId?: string) {
     try {
       const schema = z.object({
-        prompt: z.string().min(1).max(10000), // Add length limits
+        prompt: z.string().min(1).max(CONFIG.MAX_PROMPT_LENGTH),
         model: z.string().optional(),
         agent: z.string().optional(),
       });
@@ -587,11 +694,11 @@ class AmazonQMCPServer {
       const { prompt, model, agent } = schema.parse(args);
 
       const qArgs = ['chat', '--resume', '--no-interactive'];
-      
+
       if (model) {
         qArgs.push('--model', model);
       }
-      
+
       if (agent) {
         qArgs.push('--agent', agent);
       }
@@ -601,7 +708,7 @@ class AmazonQMCPServer {
 
       // Execute with retry and error recovery
       const result = await this.executeWithRetry(
-        () => this.executeQCommandWithInputInDirectory(qArgs, prompt, sessionDir),
+        () => this.executeQCommandInDirectory(qArgs, sessionDir, prompt),
         'ask_q'
       );
 
@@ -635,6 +742,12 @@ class AmazonQMCPServer {
     }
   }
 
+  /**
+   * Handle q_translate tool invocation
+   * @param args - Tool arguments
+   * @param sessionId - Optional session ID
+   * @returns Tool response
+   */
   private async handleQTranslate(args: any, sessionId?: string) {
     try {
       const schema = z.object({
@@ -645,10 +758,10 @@ class AmazonQMCPServer {
 
       // Get session directory for consistent context
       const sessionDir = this.getSessionDirectory(sessionId);
-      
+
       // Execute with retry and error recovery
       const result = await this.executeWithRetry(
-        () => this.executeQCommandWithInputInDirectory(['translate'], task, sessionDir),
+        () => this.executeQCommandInDirectory(['translate'], sessionDir, task),
         'q_translate'
       );
 
@@ -682,6 +795,11 @@ class AmazonQMCPServer {
     }
   }
 
+  /**
+   * Handle q_status tool invocation with caching
+   * @param args - Tool arguments
+   * @returns Tool response with status information
+   */
   private async handleQStatus(args: any) {
     try {
       const uptime = Date.now() - this.startTime.getTime();
@@ -699,7 +817,7 @@ class AmazonQMCPServer {
         }
       };
 
-      // Run diagnostics
+      // Run diagnostics (with caching)
       const diagnostics = await this.runDiagnostics();
 
       // Get session info
@@ -708,17 +826,17 @@ class AmazonQMCPServer {
 
       const status = {
         server: "Amazon Q CLI MCP Server",
-        version: "1.0.0", 
+        version: SERVER_INFO.VERSION,
         status: diagnostics.overall ? "healthy" : "unhealthy",
         uptime: formatUptime(),
         startTime: this.startTime.toISOString(),
         pid: process.pid,
         nodeVersion: process.version,
         platform: process.platform,
-        availableTools: ["ask_q", "take_q", "q_translate", "fetch_chunk", "q_status"],
+        availableTools: [TOOL_NAMES.ASK_Q, TOOL_NAMES.TAKE_Q, TOOL_NAMES.Q_TRANSLATE, TOOL_NAMES.FETCH_CHUNK, TOOL_NAMES.Q_STATUS],
         memoryUsage: {
           rss: `${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB`,
-          heapUsed: `${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`, 
+          heapUsed: `${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`,
           heapTotal: `${Math.round(process.memoryUsage().heapTotal / 1024 / 1024)}MB`,
         },
         diagnostics: diagnostics,
@@ -775,7 +893,17 @@ class AmazonQMCPServer {
     }
   }
 
+  /**
+   * Run diagnostic checks with caching to improve performance
+   * @returns Diagnostic results
+   */
   private async runDiagnostics() {
+    // Return cached result if still valid
+    if (this.diagnosticsCache &&
+        Date.now() - this.diagnosticsCache.timestamp < CONFIG.DIAGNOSTICS_CACHE_TTL_MS) {
+      return this.diagnosticsCache.result;
+    }
+
     const diagnostics = {
       overall: true,
       qCliAvailable: false,
@@ -854,16 +982,26 @@ class AmazonQMCPServer {
       diagnostics.issues.push('Cannot verify authentication status');
     }
 
+    // Cache the result
+    this.diagnosticsCache = {
+      result: diagnostics,
+      timestamp: Date.now()
+    };
+
     return diagnostics;
   }
 
+  /**
+   * Get count of active session directories
+   * @returns Number of active sessions
+   */
   private getActiveSessionCount(): number {
     try {
       const sessionDir = path.join(os.homedir(), '.amazon-q-mcp', 'sessions');
       if (!fs.existsSync(sessionDir)) {
         return 0;
       }
-      return fs.readdirSync(sessionDir).filter(dir => 
+      return fs.readdirSync(sessionDir).filter(dir =>
         fs.statSync(path.join(sessionDir, dir)).isDirectory()
       ).length;
     } catch (error) {
@@ -871,21 +1009,36 @@ class AmazonQMCPServer {
     }
   }
 
+  /**
+   * Handle fetch_chunk tool invocation with security validations
+   * @param args - Tool arguments
+   * @returns Tool response with fetched data
+   */
   private async handleFetchChunk(args: any) {
     const schema = z.object({
-      url: z.string().url(),
+      url: z.string().url().refine(
+        (url) => ALLOWED_URL_SCHEMES.some(scheme => url.startsWith(scheme)),
+        { message: 'Only HTTP and HTTPS URLs are allowed' }
+      ),
       start: z.number().int().min(0).optional().default(0),
-      length: z.number().int().min(1).max(10 * 1024 * 1024).optional().default(65536), // cap at 10MB
+      length: z.number().int().min(1).max(CONFIG.MAX_FETCH_SIZE_BYTES).optional().default(CONFIG.DEFAULT_FETCH_SIZE_BYTES),
       headers: z.record(z.string()).optional().default({}),
     });
 
     const { url, start, length, headers } = schema.parse(args);
 
+    // Sanitize headers - only allow safe headers
+    const sanitizedHeaders = Object.fromEntries(
+      Object.entries(headers).filter(([key]) =>
+        ALLOWED_HTTP_HEADERS.includes(key as any)
+      )
+    );
+
     const rangeHeader = `bytes=${start}-${start + length - 1}`;
     const requestHeaders = {
+      ...sanitizedHeaders,
       'Range': rangeHeader,
-      'User-Agent': 'amazon-q-mcp-server/1.0.0',
-      ...headers,
+      'User-Agent': SERVER_INFO.USER_AGENT,
     };
 
     try {
@@ -900,7 +1053,7 @@ class AmazonQMCPServer {
 
       const arrayBuffer = await response.arrayBuffer();
       const dataBase64 = Buffer.from(arrayBuffer).toString('base64');
-      
+
       const contentRange = response.headers.get('content-range');
       const contentType = response.headers.get('content-type') || 'application/octet-stream';
 
@@ -938,83 +1091,38 @@ class AmazonQMCPServer {
     }
   }
 
-  private async executeQCommand(args: string[]): Promise<{ stdout: string; stderr: string }> {
+  /**
+   * Execute Q CLI command in a specific directory with optional input
+   * This is the unified method that replaces the previous duplicated code
+   * @param args - Command arguments
+   * @param workingDir - Working directory for command execution
+   * @param input - Optional input to send to stdin
+   * @returns Command output
+   */
+  private async executeQCommandInDirectory(
+    args: string[],
+    workingDir: string,
+    input?: string
+  ): Promise<{ stdout: string; stderr: string }> {
     this.validateCommandArgs(args);
-    
-    return new Promise((resolve, reject) => {
-      const child = spawn('q', args, {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env },
-        detached: true,
-        timeout: 30000 // 30 second timeout
-      });
-      this.activeProcesses.add(child);
 
-      let stdout = '';
-      let stderr = '';
-      const maxOutputSize = 1024 * 1024; // 1MB limit
-
-      child.stdout.on('data', (data) => {
-        stdout += data.toString();
-        if (stdout.length > maxOutputSize) {
-          child.kill();
-          reject(new Error('Output size limit exceeded'));
-        }
-      });
-
-      child.stderr.on('data', (data) => {
-        stderr += data.toString();
-        if (stderr.length > maxOutputSize) {
-          child.kill();
-          reject(new Error('Error output size limit exceeded'));
-        }
-      });
-
-      const cleanup = () => {
-        this.activeProcesses.delete(child);
-      };
-
-      child.on('error', (error) => {
-        cleanup();
-        reject(new Error(`Failed to execute Q CLI: ${error.message}`));
-      });
-
-      child.on('close', (code) => {
-        cleanup();
-        if (code === 0) {
-          resolve({ stdout, stderr });
-        } else {
-          reject(new Error(`Q CLI exited with code ${code}: ${stderr}`));
-        }
-      });
-    });
-  }
-
-  private async executeQCommandWithInput(args: string[], input: string): Promise<{ stdout: string; stderr: string }> {
-    return this.executeQCommandWithInputInDirectory(args, input, process.cwd());
-  }
-
-  private async executeQCommandWithInputInDirectory(args: string[], input: string, workingDir: string): Promise<{ stdout: string; stderr: string }> {
-    this.validateCommandArgs(args);
-    
     return new Promise((resolve, reject) => {
       const child = spawn('q', args, {
         stdio: ['pipe', 'pipe', 'pipe'],
         cwd: workingDir,
         env: { ...process.env },
         detached: true,
-        timeout: 30000 // 30 second timeout
+        timeout: CONFIG.COMMAND_TIMEOUT_MS
       });
 
       this.activeProcesses.add(child);
 
       let stdout = '';
       let stderr = '';
-      const maxOutputSize = 1024 * 1024; // 1MB limit
 
       child.stdout.on('data', (data) => {
         stdout += data.toString();
-        if (stdout.length > maxOutputSize) {
+        if (stdout.length > CONFIG.MAX_OUTPUT_SIZE_BYTES) {
           child.kill();
           reject(new Error('Output size limit exceeded'));
         }
@@ -1022,7 +1130,7 @@ class AmazonQMCPServer {
 
       child.stderr.on('data', (data) => {
         stderr += data.toString();
-        if (stderr.length > maxOutputSize) {
+        if (stderr.length > CONFIG.MAX_OUTPUT_SIZE_BYTES) {
           child.kill();
           reject(new Error('Error output size limit exceeded'));
         }
@@ -1054,25 +1162,28 @@ class AmazonQMCPServer {
     });
   }
 
+  /**
+   * Start the MCP server
+   */
   async run(): Promise<void> {
     await this.initialize();
-    
-    this.sessionLogger.logActivity('TRANSPORT_INIT', 'Initializing stdio transport');
-    
+
+    this.sessionLogger.logActivity(LOG_TYPES.TRANSPORT_INIT, 'Initializing stdio transport');
+
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
-    
-    this.sessionLogger.logActivity('SERVER_CONNECTED', 'Server connected and running on stdio', {
+
+    this.sessionLogger.logActivity(LOG_TYPES.SERVER_CONNECTED, 'Server connected and running on stdio', {
       sessionId: this.sessionLogger.getSessionId(),
       claudeInstance: this.sessionLogger.getClaudeInstance()
     });
-    
+
     // Clean up stale sessions from previous runs
     const cleanedCount = AmazonQSessionLogger.cleanupStaleSessionsFromRegistry();
     if (cleanedCount > 0) {
-      this.sessionLogger.logActivity('CLEANUP', `Cleaned up ${cleanedCount} stale sessions`);
+      this.sessionLogger.logActivity(LOG_TYPES.CLEANUP, `Cleaned up ${cleanedCount} stale sessions`);
     }
-    
+
     console.error('[Amazon Q MCP] Amazon Q CLI MCP Server listening on stdio');
   }
 }
@@ -1084,7 +1195,7 @@ server.run().catch((error) => {
   // Try to log the error if session logger exists
   try {
     if ((server as any).sessionLogger) {
-      (server as any).sessionLogger.logActivity('STARTUP_ERROR', 'Failed to start server', {
+      (server as any).sessionLogger.logActivity(LOG_TYPES.STARTUP_ERROR, 'Failed to start server', {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined
       });
